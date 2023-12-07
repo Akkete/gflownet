@@ -429,8 +429,7 @@ class Tetris(GFlowNetEnv):
         Args
         ----
         action : tuple
-            Action to be executed. An action is a tuple int values indicating the
-            dimensions to increment by 1.
+            Action to be executed. An action is a tuple int values (piece_idx, rotation, col)
 
         skip_mask_check : bool
             If True, skip computing forward mask of invalid actions to check if the
