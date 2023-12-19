@@ -1,0 +1,17 @@
+defaults:
+  - base
+
+_target_: gflownet.envs.arithmetictree.ArithmeticBuilder
+
+id: arithmetictree
+max_depth: 10
+min_int: -100
+max_int:  100
+opaeraions: ['+', '*']
+stock: [1, -1, 1, -2, 3, -3]
+target: 0
+buffer:
+  data_path: null
+  train: null
+  test: null
+
