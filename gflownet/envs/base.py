@@ -702,8 +702,8 @@ class GFlowNetEnv:
 
         Args
         ----
-        state : list
-            A state
+        states : list
+            A list of states
         """
         return np.array(states)
 
