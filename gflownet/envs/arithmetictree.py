@@ -1,8 +1,11 @@
 from __future__ import annotations
 from typing import List, Optional, Tuple
+import copy
 
 from gflownet.envs.base import GFlowNetEnv
+import torch
 
+# utility functcion
 def flat_map(f, xs):
     return [y for ys in xs for y in f(ys)]
 
@@ -13,6 +16,9 @@ class ArithmeticNode:
             return flat_map(lambda x: x.get_leaves(), self.children)
         else:
             return [self]
+
+    def copy(self) -> ArithmeticNode:
+        return copy.deepcopy(self)
 
 class NumberNode(ArithmeticNode):
 
@@ -49,23 +55,36 @@ class ArithmeticBuilder(GFlowNetEnv):
 
     def __init__(
         self, 
-        max_depth: int = 10, 
+        max_operations: int = 10, 
         min_int: int = -100, 
         max_int: int = +100,
         operations: List[str] = ['+', '*'],
         stock: List[int] = [1, -1, 2, -2, 3, -3],
         target: int = 0,
+        **kwargs,
     ):
-        self.max_depth = max_depth
+        self.max_operations = max_operations
         self.min_int = min_int
         self.max_int = max_int
+        self.operations = operations
         self.stock = stock
         # End-of-sequence action
         self.eos = (0, 0, -1)
         # The initial state is a tree with just the target
         self.source = NumberNode(target)
-        # List of integers in leaves, initially contains just the target
-        self.leaf_nodes = [target]
+        # 
+        self.statetorch2oracle = self.state2oracle
+        # Base class init
+        super().__init__(**kwargs)
+
+    def number_node_to_tensor(self, node: NumberNode) -> TensorType:
+        """
+        Converts an integer number into a one-hot vector representation.
+        """
+        length = self.max_int - self.min_int + 1
+        tensor = torch.zeros(length)
+        tensor[node.value - self.min_int] = 1.0
+        return tensor
 
     def get_action_space(self):
         """
@@ -86,8 +105,10 @@ class ArithmeticBuilder(GFlowNetEnv):
                 for b in range(self.min_int, self.max_int):
                     if op == '+':
                         a = x - b
-                    elif op == '*':
+                    elif op == '*' and b != 0:
                         a = x / b
+                    else:
+                        a = None
                     if a in range(self.min_int, self.max_int):
                         actions.append((x, b, opid))
         actions.append(self.eos)
@@ -99,11 +120,13 @@ class ArithmeticBuilder(GFlowNetEnv):
         done: Optional[bool] = None,
     ):
         if state is None:
-            state = self.state.clone().detach()
+            state = self.state.copy()
         if done is None:
             done = self.done
         if done:
             return [True for _ in range(self.policy_output_dim)]
+        if self.n_actions >= self.max_operations:
+            return [True for _ in range(self.policy_output_dim-1)] + [False]
         mask = [False for _ in range(self.policy_output_dim)]
         for idx, action in enumerate(self.action_space[:-1]):
             x, _, _ = action
@@ -148,7 +171,8 @@ class ArithmeticBuilder(GFlowNetEnv):
             return self.state, self.eos, True
         # If action is normal action, perform action
         else:
-            x, b, op = action
+            x, b, opid = action
+            op = self.operations[opid]
             if op == '+':
                 a = x - b
             elif op == '*':
@@ -161,16 +185,68 @@ class ArithmeticBuilder(GFlowNetEnv):
             leaf_to_expand.expand(op, a, b)
             # Update leaf nodes
             self.leaf_nodes.remove(leaf_to_expand)
-            self.leaf_nodes.append(leaf_to_expand.get_leaves())
-            # Return
+            self.leaf_nodes = leaf_to_expand.get_leaves()
+            # Increment number of actions and return
+            self.n_actions += 1
             return self.state, action, True
-
         
+    def state2policy(
+        self, state: Optional[TensorType["height", "width"]] = None
+    ) -> TensorType["height", "width"]:
+        """
+        Prepares a state in "GFlowNet format" for the policy model.
 
+        See: state2oracle()
+        """
+        return self.state2oracle(state).flatten()
+
+    def state2oracle(
+        self, state: Optional = None
+    ) -> TensorType["height", "width"]:
+        """
+        Prepares a state in "GFlowNet format" for the oracles.
+        """
+        if state is None:
+            state = self.state.copy()
+        return sum(map(self.number_node_to_tensor, self.leaf_nodes))
+
+    def statebatch2policy(
+        self, states: List[List]
+    ) -> TensorType["batch_size", "policy_input_dim"]:
+        """
+        Converts a list of states into a format suitable for a machine learning 
+        models.
+        """
+        return torch.stack(list(map(self.state2oracle, states)), axis = 0)
+
+    def policy2state(
+        self, policy: Optional[TensorType["policy_input_dim"]] = None
+    ) -> None:
+        """
+        Returns None to signal that the conversion is not reversible.
+        """
+        return None
+
+    def reset(self, env_id: Union[int, str] = None):
+        """
+        Resets the environment.
+
+        Args
+        ----
+        env_id: int or str
+            Unique (ideally) identifier of the environment instance, used to identify
+            the trajectory generated with this environment. If None, uuid.uuid4() is
+            used.
+
+        Returns
+        -------
+        self
+        """
+        # Most of the resetting is handled by the base class reset method
+        super().reset(env_id)
+        # List of leaf nodes is maintained, starts as source
+        self.leaf_nodes = [self.state]
+        return self
 
     
 
-
-    
-
-    
