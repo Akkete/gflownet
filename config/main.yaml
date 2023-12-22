@@ -1,9 +1,9 @@
 defaults:
   - _self_
-  - env: grid
+  - env: arithmetictree
   - gflownet: flowmatch
   - policy: mlp_${gflownet}
-  - proxy: corners
+  - proxy: uniform
   - logger: wandb
   - user: akkete
 
