@@ -9,6 +9,7 @@ import torch
 def flat_map(f, xs):
     return [y for ys in xs for y in f(ys)]
 
+
 class ArithmeticNode:
 
     def get_leaves(self) -> List[ArithmeticNode]:
@@ -17,30 +18,80 @@ class ArithmeticNode:
         else:
             return [self]
 
+    def get_leaf_numbers(self) -> List[NumberNode]:
+        leaves = self.get_leaves()
+        for idx, leaf in enumerate(leaves):
+            if isinstance(leaf, OperationNode):
+                leaves[idx] = leaf.parent
+        return leaves
+
+    def get_leaf_operations(self) -> List[OperationNode]:
+        leaves = self.get_leaves()
+        leaf_operations = set()
+        for leaf in leaves:
+            if isinstance(leaf, OperationNode):
+                leaf_operations.add(leaf)
+            elif isinstance(leaf, NumberNode) and leaf.parent:
+                leaf_operations.add(leaf)
+        return list(leaf_operations)
+
     def copy(self) -> ArithmeticNode:
         return copy.deepcopy(self)
+    
 
 class NumberNode(ArithmeticNode):
 
-    def __init__(self, value: int, operation: Optional[OperationNode] = None):
+    def __init__(
+        self, 
+        value: int, 
+        operation: Optional[OperationNode] = None,
+    ):
         self.value = value
         self.operation = operation
         if operation:
             self.children = [self.operation]
         else:
             self.children = []
+        self.parent = None
     
     def expand(self, op: str, a: int, b: int):
-        self.operation = OperationNode(op, NumberNode(a), NumberNode(b))
+        operation = OperationNode(op, NumberNode(a), NumberNode(b))
+        operation.set_parent(self)
+    
+    def set_operation(self, operation: OperationNode):
+        assert not self.operation, "Node already has a child operation."
+        self.operation = operation
         self.children = [self.operation]
+    
+    def delete_operation(self):
+        self.operation.parent = None
+        self.operation = None
+        self.children = None
+        
 
 class OperationNode(ArithmeticNode):
 
-    def __init__(self, op: str, a: NumberNode, b: NumberNode):
+    def __init__(
+        self, 
+        op: str, 
+        a: NumberNode, 
+        b: NumberNode, 
+    ):
         self.op = op
         self.a = a
         self.b = b
         self.children = [self.a, self.b]
+        self.parent = None
+    
+    def set_parent(self, parent: NumberNode):
+        assert not self.parent, "Node already has a parent."
+        assert not parent.operation, "Parent already has a child operation."
+        self.parent = parent
+        parent.set_operation(self)
+    
+    def cut_from_parent(self):
+        self.parent.delete_operation()
+
 
 class ArithmeticBuilder(GFlowNetEnv):
     """
@@ -189,7 +240,57 @@ class ArithmeticBuilder(GFlowNetEnv):
             # Increment number of actions and return
             self.n_actions += 1
             return self.state, action, True
-        
+
+    def get_parents(
+        self,
+        state: Optional[List] = None,
+        done: Optional[bool] = None,
+        action: Optional[Tuple] = None,
+    ) -> Tuple[List, List]:
+        """
+        Determines all parents and actions that lead to state.
+
+        In continuous environments, get_parents() should return only the parent from
+        which action leads to state.
+
+        Args
+        ----
+        state : list
+            Representation of a state
+
+        done : bool
+            Whether the trajectory is done. If None, done is taken from instance.
+
+        action : None
+            Ignored
+
+        Returns
+        -------
+        parents : list
+            List of parents in state format
+
+        actions : list
+            List of actions that lead to state for each parent in parents
+        """
+        if state is None:
+            state = self.state.copy()
+        if done is None:
+            done = self.done
+        if done:
+            return [state], [(self.eos,)]
+        parents = []
+        actions = []
+        root = state.copy()
+        queue = [(root, state)]
+        while queue:
+            node = queue.pop()
+            if node.operation and any(map(lambda x: x.operation, node.operation.children)):
+                [(root.copy(), x) for x in node.operation.children]
+            elif node.operation:
+                pass
+
+        return parents, actions
+
     def state2policy(
         self, state: Optional[TensorType["height", "width"]] = None
     ) -> TensorType["height", "width"]:
