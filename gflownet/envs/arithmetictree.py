@@ -1,10 +1,12 @@
 from __future__ import annotations
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 from torchtyping import TensorType
 import copy
 
-from gflownet.envs.base import GFlowNetEnv
 import torch
+
+from gflownet.envs.base import GFlowNetEnv
+from gflownet.utils.common import set_device, tint
 
 # utility functcion
 def flat_map(f, xs):
@@ -114,20 +116,22 @@ class ArithmeticBuilder(GFlowNetEnv):
         target: int = 0,
         **kwargs,
     ):
+        self.device = set_device(kwargs["device"])
         self.max_operations = max_operations
         self.min_int = min_int
         self.max_int = max_int
         self.no_int = min_int - 1
+        self.int_range = range(self.min_int, self.max_int + 1)
         self.operations = operations
         self.stock = stock
         # End-of-sequence action
         self.eos = (0, 0, -1)
         # The initial state is a tree with just the target
-        max_n_nodes = 2**max_operations - 1
+        max_n_nodes = 2**(max_operations + 1) - 1
         self.source = torch.stack((
             torch.full((max_n_nodes,), self.no_int),
             torch.full((max_n_nodes,), -1)
-        ), axis = 1)
+        ), axis = 1).to(device=self.device)
         self.source[0][0] = target
         # Base class init
         super().__init__(**kwargs)
@@ -160,11 +164,11 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         Get node index of the sibling of k-th node.
         """
-        parent = Tree._get_parent(k)
+        parent = ArithmeticBuilder._get_parent(k)
         if parent is None:
             return None
-        left = Tree._get_left_child(parent)
-        right = Tree._get_right_child(parent)
+        left = ArithmeticBuilder._get_left_child(parent)
+        right = ArithmeticBuilder._get_right_child(parent)
         return left if k == right else right
 
     def _expand(
@@ -194,7 +198,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         Converts an integer number into a one-hot vector representation.
         """
         one_hot_length = self.max_int - self.min_int + 1
-        tensor = torch.zeros(one_hot_length)
+        tensor = torch.zeros(one_hot_length, device=self.device)
         tensor[int(self.state[idx][0] - self.min_int)] = 1.0
         return tensor
 
@@ -213,15 +217,17 @@ class ArithmeticBuilder(GFlowNetEnv):
         actions = []
         for opid in range(len(self.operations)):
             op = self.operations[opid]
-            for x in range(self.min_int, self.max_int):
-                for b in range(self.min_int, self.max_int):
+            for x in self.int_range:
+                for b in self.int_range:
                     if op == '+':
                         a = x - b
                     elif op == '*' and b != 0:
                         a = x / b
+                    elif op == '*' and b == 0:
+                        a = 0
                     else:
                         a = None
-                    if a in range(self.min_int, self.max_int):
+                    if a in self.int_range:
                         actions.append((x, b, opid))
         actions.append(self.eos)
         return actions
@@ -240,10 +246,12 @@ class ArithmeticBuilder(GFlowNetEnv):
         if self.n_actions >= self.max_operations:
             return [True for _ in range(self.policy_output_dim - 1)] + [False]
         mask = [False for _ in range(self.policy_output_dim)]
-        for idx, action in enumerate(self.action_space[:-1]):
-            x, _, _ = action
-            if x not in map(lambda idx: state[idx][0], self.leaf_indices):
-                mask[idx] = True
+        # Very slow alternative: check each action separately
+        # mask = [False for _ in range(self.policy_output_dim)]
+        # for idx, action in enumerate(self.action_space[:-1]):
+        #     x, _, _ = action
+        #     if x not in map(lambda idx: state[idx][0], self.leaf_indices):
+        #         mask[idx] = True
         return mask
 
     def step(
@@ -282,27 +290,34 @@ class ArithmeticBuilder(GFlowNetEnv):
             self.n_actions += 1
             return self.state, self.eos, True
         # If action is normal action, perform action
+        x, b, opid = action
+        op = self.operations[opid]
+        if op == '+':
+            a = x - b
+        elif op == '*':
+            a = x / b
         else:
-            x, b, opid = action
-            op = self.operations[opid]
-            if op == '+':
-                a = x - b
-            elif op == '*':
-                a = x / b
-            # Find leaf that matches x and expand it
+            raise Exception("Operator must be '+' or '*'.")
+        if a not in self.int_range:
+            return self.state, action, False
+        # Find leaf that matches x and expand it
+        # If no leaf matches x, the action is invalid
+        try:
             leaf_to_expand = next(filter(
                 lambda idx: self.state[idx][0] == x, 
                 self.leaf_indices
             ))
-            updated_state = self._expand(leaf_to_expand, opid, a, b)
-            # Update leaf nodes
-            self.leaf_indices.remove(leaf_to_expand)
-            self.leaf_indices.append(self._get_left_child(leaf_to_expand))
-            self.leaf_indices.append(self._get_right_child(leaf_to_expand))
-            # Increment number of actions, update state and return
-            self.n_actions += 1
-            self.state = updated_state
-            return self.state, action, True
+        except StopIteration:
+            return self.state, action, False
+        updated_state = self._expand(leaf_to_expand, opid, a, b)
+        # Update leaf nodes
+        self.leaf_indices.remove(leaf_to_expand)
+        self.leaf_indices.append(self._get_left_child(leaf_to_expand))
+        self.leaf_indices.append(self._get_right_child(leaf_to_expand))
+        # Increment number of actions, update state and return
+        self.n_actions += 1
+        self.state = updated_state
+        return self.state, action, True
 
     def get_parents(
         self,
@@ -376,8 +391,8 @@ class ArithmeticBuilder(GFlowNetEnv):
         return self.statebatch2oracle(states)
 
     def statetorch2proxy(
-        self, states: TorchType["batch", "state_dim"]
-    ) -> TorchType:
+        self, states: TensorType["batch", "state_dim"]
+    ) -> TensorType:
         return self.statetorch2oracle(states)
 
     def state2policy(
@@ -411,7 +426,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         return self.statebatch2oracle(states).flatten(start_dim=1)
     
     def statetorch2policy(self, states: TensorType) -> TensorType:
-        return statetorch2oracle(states).flatten(start_dim=1)
+        return self.statetorch2oracle(states).flatten(start_dim=1)
 
     def policy2state(
         self, policy: Optional[TensorType["policy_input_dim"]] = None
