@@ -386,7 +386,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         return self.state2oracle(state)
 
     def state2oracle(
-        self, state: Optional = None
+        self, state: Optional[TensorType] = None
     ) -> TensorType["one_hot_length"]:
         if state is None:
             state = self.state.clone().detach()
