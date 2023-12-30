@@ -9,7 +9,6 @@ import torch
 def flat_map(f, xs):
     return [y for ys in xs for y in f(ys)]
 
-
 class ArithmeticNode:
 
     def get_leaves(self) -> List[ArithmeticNode]:
@@ -117,24 +116,85 @@ class ArithmeticBuilder(GFlowNetEnv):
         self.max_operations = max_operations
         self.min_int = min_int
         self.max_int = max_int
+        self.no_int = min_int - 1
         self.operations = operations
         self.stock = stock
         # End-of-sequence action
         self.eos = (0, 0, -1)
         # The initial state is a tree with just the target
-        self.source = NumberNode(target)
-        # 
-        self.statetorch2oracle = self.state2oracle
+        max_n_nodes = 2**max_operations - 1
+        self.source = torch.stack((
+            torch.full((max_n_nodes,), self.no_int),
+            torch.full((max_n_nodes,), -1)
+        ), axis = 1)
+        self.source[0][0] = target
         # Base class init
         super().__init__(**kwargs)
 
-    def number_node_to_tensor(self, node: NumberNode) -> TensorType:
+    @staticmethod
+    def _get_parent(k: int) -> Optional[int]:
+        """
+        Get node index of a parent of k-th node.
+        """
+        if k == 0:
+            return None
+        return (k - 1) // 2
+
+    @staticmethod
+    def _get_left_child(k: int) -> int:
+        """
+        Get node index of a left child of k-th node.
+        """
+        return 2 * k + 1
+
+    @staticmethod
+    def _get_right_child(k: int) -> int:
+        """
+        Get node index of a right child of k-th node.
+        """
+        return 2 * k + 2
+
+    @staticmethod
+    def _get_sibling(k: int) -> Optional[int]:
+        """
+        Get node index of the sibling of k-th node.
+        """
+        parent = Tree._get_parent(k)
+        if parent is None:
+            return None
+        left = Tree._get_left_child(parent)
+        right = Tree._get_right_child(parent)
+        return left if k == right else right
+
+    def _expand(
+        self,
+        idx: int, 
+        opid: str, 
+        a: int, 
+        b: int, 
+        state: Optional[TensorType] = None
+    ) -> TensorType:
+        """
+        Expand node at index idx with operation opid and childs a and b.
+        Return updated state.
+        """
+        if state:
+            updated_state = state.clone().detach()
+        else:
+            updated_state = self.state.clone().detach()
+        updated_state[idx][1] = opid
+        updated_state[self._get_left_child(idx)][0] = a
+        updated_state[self._get_right_child(idx)][0] = b
+        return updated_state
+
+
+    def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
         """
         Converts an integer number into a one-hot vector representation.
         """
-        length = self.max_int - self.min_int + 1
-        tensor = torch.zeros(length)
-        tensor[node.value - self.min_int] = 1.0
+        one_hot_length = self.max_int - self.min_int + 1
+        tensor = torch.zeros(one_hot_length)
+        tensor[int(self.state[idx][0] - self.min_int)] = 1.0
         return tensor
 
     def get_action_space(self):
@@ -171,20 +231,20 @@ class ArithmeticBuilder(GFlowNetEnv):
         done: Optional[bool] = None,
     ):
         if state is None:
-            state = self.state.copy()
+            state = self.state.clone().detach()
         if done is None:
             done = self.done
         if done:
             return [True for _ in range(self.policy_output_dim)]
         if self.n_actions >= self.max_operations:
-            return [True for _ in range(self.policy_output_dim-1)] + [False]
+            return [True for _ in range(self.policy_output_dim - 1)] + [False]
         mask = [False for _ in range(self.policy_output_dim)]
         for idx, action in enumerate(self.action_space[:-1]):
             x, _, _ = action
-            if x not in map(lambda x: x.value, self.leaf_nodes):
+            if x not in map(lambda idx: state[idx][0], self.leaf_indices):
                 mask[idx] = True
         return mask
-            
+
     def step(
         self, action: Tuple[int], skip_mask_check: bool = False
     ) -> Tuple[List[int], Tuple[int], bool]:
@@ -230,15 +290,17 @@ class ArithmeticBuilder(GFlowNetEnv):
                 a = x / b
             # Find leaf that matches x and expand it
             leaf_to_expand = next(filter(
-                lambda leaf: leaf.value == x, 
-                self.leaf_nodes
+                lambda idx: self.state[idx][0] == x, 
+                self.leaf_indices
             ))
-            leaf_to_expand.expand(op, a, b)
+            updated_state = self._expand(leaf_to_expand, opid, a, b)
             # Update leaf nodes
-            self.leaf_nodes.remove(leaf_to_expand)
-            self.leaf_nodes = leaf_to_expand.get_leaves()
-            # Increment number of actions and return
+            self.leaf_indices.remove(leaf_to_expand)
+            self.leaf_indices.append(self._get_left_child(leaf_to_expand))
+            self.leaf_indices.append(self._get_right_child(leaf_to_expand))
+            # Increment number of actions, update state and return
             self.n_actions += 1
+            self.state = updated_state
             return self.state, action, True
 
     def get_parents(
@@ -273,52 +335,82 @@ class ArithmeticBuilder(GFlowNetEnv):
             List of actions that lead to state for each parent in parents
         """
         if state is None:
-            state = self.state.copy()
+            state = self.state.clone().detach()
         if done is None:
             done = self.done
         if done:
-            return [state], [(self.eos,)]
+            return [state], [self.eos,]
         parents = []
         actions = []
-        root = state.copy()
-        queue = [(root, state)]
-        while queue:
-            node = queue.pop()
-            if node.operation and any(map(lambda x: x.operation, node.operation.children)):
-                [(root.copy(), x) for x in node.operation.children]
-            elif node.operation:
-                pass
-
+        stack = [0]
+        while stack:
+            idx = stack.pop()
+            if state[idx][1] == -1:
+                continue
+            left_child = self._get_left_child(idx)
+            right_child = self._get_right_child(idx)
+            left_expanded = state[left_child][1] != -1
+            right_expanded = state[right_child][1] != -1
+            if left_expanded or right_expanded:
+                stack.append(left_child)
+                stack.append(right_child)
+            else:
+                parent_state = state.clone().detach()
+                parent_state[idx][1] = -1
+                parent_state[right_child] = self.no_int
+                parent_state[left_child] = self.no_int
+                action = (int(state[idx][0]), int(state[right_child][0]), int(state[idx][1]))
+                parents.append(parent_state)
+                actions.append(action)
         return parents, actions
 
-    def state2policy(
-        self, state: Optional[TensorType["height", "width"]] = None
-    ) -> TensorType["height", "width"]:
-        """
-        Prepares a state in "GFlowNet format" for the policy model.
+    def state2proxy(
+        self, state: Optional[TensorType] = None
+    ) -> TensorType["one_hot_length"]:
+        return self.state2oracle(state)
 
-        See: state2oracle()
-        """
-        return self.state2oracle(state).flatten()
+    def statebatch2proxy(
+        self, states: List[TensorType]
+    ) -> TensorType["batch", "one_hot_length"]:
+        return self.statebatch2oracle(states)
+
+    def statetorch2proxy(
+        self, states: TorchType["batch", "state_dim"]
+    ) -> TorchType:
+        return self.statetorch2oracle(states)
+
+    def state2policy(
+        self, state: Optional[TensorType] = None
+    ) -> TensorType["one_hot_length"]:
+        return self.state2oracle(state)
 
     def state2oracle(
         self, state: Optional = None
-    ) -> TensorType["height", "width"]:
-        """
-        Prepares a state in "GFlowNet format" for the oracles.
-        """
+    ) -> TensorType["one_hot_length"]:
         if state is None:
-            state = self.state.copy()
-        return sum(map(self.number_node_to_tensor, self.leaf_nodes))
+            state = self.state.clone().detach()
+        return sum(map(self.node_to_tensor, self.leaf_indices))
+
+    def statebatch2oracle(
+        self, states: List[TensorType]
+    ) -> TensorType["batch", "state_oracle_dim"]:
+        return torch.stack(list(map(self.state2oracle, states)), axis = 0)
+
+    def statetorch2oracle(
+        self, states: TensorType["", "batch"]
+    ) -> TensorType["one_hot_length", "batch"]:
+        return self.statebatch2oracle(torch.unbind(states, dim=-1))
+
+    def state2policy(self, state: Optional[TensorType] = None) -> TensorType:
+        return self.state2oracle(state).flatten()
 
     def statebatch2policy(
         self, states: List[List]
     ) -> TensorType["batch_size", "policy_input_dim"]:
-        """
-        Converts a list of states into a format suitable for a machine learning 
-        models.
-        """
-        return torch.stack(list(map(self.state2oracle, states)), axis = 0)
+        return self.statebatch2oracle(states).flatten(start_dim=1)
+    
+    def statetorch2policy(self, states: TensorType) -> TensorType:
+        return statetorch2oracle(states).flatten(start_dim=1)
 
     def policy2state(
         self, policy: Optional[TensorType["policy_input_dim"]] = None
@@ -345,8 +437,8 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         # Most of the resetting is handled by the base class reset method
         super().reset(env_id)
-        # List of leaf nodes is maintained, starts as source
-        self.leaf_nodes = [self.state]
+        # List of leaf indices is maintained, starts as root
+        self.leaf_indices = [0]
         return self
 
     
