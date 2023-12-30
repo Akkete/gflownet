@@ -277,7 +277,7 @@ class Tetris(GFlowNetEnv):
 
         Args
         ----
-        state : list
+        states : list
         """
         states = torch.stack(states)
         states[states != 0] = 1
