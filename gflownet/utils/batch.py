@@ -769,9 +769,11 @@ class Batch:
             state = self.states[idx]
             done = self.done[idx]
             traj_idx = self.traj_indices[idx]
-            self.masks_invalid_actions_forward[idx] = self.envs[
-                traj_idx
-            ].get_mask_invalid_actions_forward(state, done)
+            self.masks_invalid_actions_forward[idx] = tbool(
+                self.envs[
+                    traj_idx
+                ].get_mask_invalid_actions_forward(state, done), 
+            device=self.device)
         self.masks_forward_available = True
 
     # TODO: opportunity to improve efficiency by caching. Note that
@@ -1287,9 +1289,11 @@ class Batch:
             if self.masks_invalid_actions_forward[batch_idx] is None:
                 state = self.states[batch_idx]
                 done = self.done[batch_idx]
-                self.masks_invalid_actions_forward[batch_idx] = self.envs[
-                    traj_idx
-                ].get_mask_invalid_actions_forward(state, done)
+                self.masks_invalid_actions_forward[batch_idx] = tbool(
+                    self.envs[
+                        traj_idx
+                    ].get_mask_invalid_actions_forward(state, done),
+                device=self.device)
             return self.masks_invalid_actions_forward[batch_idx]
         elif item == "mask_b" or item == "mask_backward":
             if self.masks_invalid_actions_backward[batch_idx] is None:
