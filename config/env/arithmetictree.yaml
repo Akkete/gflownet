@@ -4,9 +4,9 @@ defaults:
 _target_: gflownet.envs.arithmetictree.ArithmeticBuilder
 
 id: arithmetictree
-max_depth: 10
-min_int: -100
-max_int:  100
+max_operations: 6
+min_int: -20
+max_int:  20
 opaerations: ['+', '*']
 stock: [1, -1, 2, -2, 3, -3]
 target: 0
