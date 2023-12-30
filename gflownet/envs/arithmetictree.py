@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional, Tuple
+from torchtyping import TensorType
 import copy
 
 from gflownet.envs.base import GFlowNetEnv
