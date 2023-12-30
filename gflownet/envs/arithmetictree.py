@@ -227,7 +227,7 @@ class ArithmeticBuilder(GFlowNetEnv):
 
     def get_mask_invalid_actions_forward(
         self, 
-        state: Optional = None, 
+        state: Optional[TensorType] = None, 
         done: Optional[bool] = None,
     ):
         if state is None:
