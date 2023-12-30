@@ -223,8 +223,6 @@ class ArithmeticBuilder(GFlowNetEnv):
                         a = x - b
                     elif op == '*' and b != 0:
                         a = x / b
-                    elif op == '*' and b == 0:
-                        a = 0
                     else:
                         a = None
                     if a in self.int_range:
@@ -245,7 +243,10 @@ class ArithmeticBuilder(GFlowNetEnv):
             return [True for _ in range(self.policy_output_dim)]
         if self.n_actions >= self.max_operations:
             return [True for _ in range(self.policy_output_dim - 1)] + [False]
-        mask = [False for _ in range(self.policy_output_dim)]
+        mask = [True for _ in range(self.policy_output_dim)]
+        for idx in self.leaf_indices:
+            x = state[idx][0]
+
         # Very slow alternative: check each action separately
         # mask = [False for _ in range(self.policy_output_dim)]
         # for idx, action in enumerate(self.action_space[:-1]):
