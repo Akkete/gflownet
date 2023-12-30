@@ -1,12 +1,11 @@
 from __future__ import annotations
 from typing import List, Optional, Tuple, Union
 from torchtyping import TensorType
-import copy
 
 import torch
 
 from gflownet.envs.base import GFlowNetEnv
-from gflownet.utils.common import set_device, tint
+from gflownet.utils.common import set_device
 
 class ArithmeticBuilder(GFlowNetEnv):
     """
