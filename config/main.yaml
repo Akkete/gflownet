@@ -3,7 +3,7 @@ defaults:
   - env: arithmetictree
   - gflownet: flowmatch
   - policy: mlp_${gflownet}
-  - proxy: uniform
+  - proxy: arithmetictree
   - logger: wandb
   - user: akkete
 

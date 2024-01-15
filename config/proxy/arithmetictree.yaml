@@ -1,0 +1,3 @@
+_target_: gflownet.proxy.arithmetictree.ArithmeticScorer
+
+stock: [1, -1, 2, -2, 3, -3]
