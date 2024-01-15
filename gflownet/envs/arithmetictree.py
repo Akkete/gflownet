@@ -39,12 +39,30 @@ class ArithmeticBuilder(GFlowNetEnv):
         # End-of-sequence action
         self.eos = (0, 0, -1)
         # The initial state is a tree with just the target
-        max_n_nodes = 2**(max_operations + 1) - 1
+        self.max_n_nodes = 2**(max_operations + 2) - 1
         self.source = torch.stack((
-            torch.full((max_n_nodes,), self.no_int),
-            torch.full((max_n_nodes,), -1)
+            torch.full((self.max_n_nodes,), self.no_int),
+            torch.full((self.max_n_nodes,), -1)
         ), axis = 1).to(device=self.device)
         self.source[0][0] = target
+        # Make base mask that
+        mask = []
+        for opid in range(len(self.operations)):
+            op = self.operations[opid]
+            for x in self.int_range:
+                for b in self.int_range:
+                    if op == '+':
+                        a = x - b
+                    elif op == '*' and b != 0:
+                        a = x / b
+                    else:
+                        a = None
+                    if a in self.int_range:
+                        mask.append(False)
+                    else:
+                        mask.append(True)
+        mask.append(False)
+        self.mask_invalid_actions_forward_base = mask
         # Base class init
         super().__init__(**kwargs)
 
@@ -126,21 +144,34 @@ class ArithmeticBuilder(GFlowNetEnv):
         The integer a can be calculated by a = x inv b.
         TODO: The integer x is automatically chosen for the agent.
         """
+        # This implementation lists some actions that are never valid,
+        # but the good thing is that there is always the same number of 
+        # actions per x
         actions = []
         for opid in range(len(self.operations)):
-            op = self.operations[opid]
             for x in self.int_range:
                 for b in self.int_range:
-                    if op == '+':
-                        a = x - b
-                    elif op == '*' and b != 0:
-                        a = x / b
-                    else:
-                        a = None
-                    if a in self.int_range:
                         actions.append((x, b, opid))
         actions.append(self.eos)
         return actions
+
+        # This implementation only lists the actions that are sometimes valid, 
+        # but that makes it difficult to prepare masks efficiently
+        # actions = []
+        # for opid in range(len(self.operations)):
+        #     op = self.operations[opid]
+        #     for x in self.int_range:
+        #         for b in self.int_range:
+        #             if op == '+':
+        #                 a = x - b
+        #             elif op == '*' and b != 0:
+        #                 a = x / b
+        #             else:
+        #                 a = None
+        #             if a in self.int_range:
+        #                 actions.append((x, b, opid))
+        # actions.append(self.eos)
+        # return actions
 
     def get_mask_invalid_actions_forward(
         self, 
@@ -155,9 +186,21 @@ class ArithmeticBuilder(GFlowNetEnv):
             return [True for _ in range(self.policy_output_dim)]
         if self.n_actions >= self.max_operations:
             return [True for _ in range(self.policy_output_dim - 1)] + [False]
-        mask = [True for _ in range(self.policy_output_dim)]
-        for idx in self.leaf_indices:
-            x = state[idx][0]
+        
+        # Filter those where x is not a leaf
+        mask = [True for _ in range(self.policy_output_dim - 1)] + [False]
+        n = len(self.int_range)
+        for x in map(lambda idx: state[idx][0].item(), self.leaf_indices):
+            for opid in range(len(self.operations)):
+                start = n * n * opid + (x - self.min_int) * n
+                end = start + n
+                mask[start:end] = [False] * n
+        mask = mask or self.mask_invalid_actions_forward_base
+        return mask
+
+        # No masking
+        # mask = [False for _ in range(self.policy_output_dim)]
+        # return mask
 
         # Very slow alternative: check each action separately
         # mask = [False for _ in range(self.policy_output_dim)]
@@ -165,7 +208,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         #     x, _, _ = action
         #     if x not in map(lambda idx: state[idx][0], self.leaf_indices):
         #         mask[idx] = True
-        return mask
+        # return mask
 
     def step(
         self, action: Tuple[int], skip_mask_check: bool = False
@@ -208,16 +251,23 @@ class ArithmeticBuilder(GFlowNetEnv):
         if op == '+':
             a = x - b
         elif op == '*':
-            a = x / b
+            if x == 0 and b == 0:
+                a = 0
+            elif b == 0:
+                return self.state, action, False
+            else:
+                a = x / b
         else:
             raise Exception("Operator must be '+' or '*'.")
+        # If a is not in the range of allowed integers, the action is invalid
         if a not in self.int_range:
             return self.state, action, False
         # Find leaf that matches x and expand it
         # If no leaf matches x, the action is invalid
         try:
             leaf_to_expand = next(filter(
-                lambda idx: self.state[idx][0] == x, 
+                lambda idx: idx < self.max_n_nodes / 2 and 
+                    self.state[idx][0] == x, 
                 self.leaf_indices
             ))
         except StopIteration:
@@ -308,17 +358,12 @@ class ArithmeticBuilder(GFlowNetEnv):
     ) -> TensorType:
         return self.statetorch2oracle(states)
 
-    def state2policy(
-        self, state: Optional[TensorType] = None
-    ) -> TensorType["one_hot_length"]:
-        return self.state2oracle(state)
-
     def state2oracle(
         self, state: Optional[TensorType] = None
     ) -> TensorType["one_hot_length"]:
         if state is None:
             state = self.state.clone().detach()
-        return sum(map(self.node_to_tensor, self.leaf_indices))
+        return state
 
     def statebatch2oracle(
         self, states: List[TensorType]
@@ -330,16 +375,26 @@ class ArithmeticBuilder(GFlowNetEnv):
     ) -> TensorType["one_hot_length", "batch"]:
         return self.statebatch2oracle(torch.unbind(states, dim=-1))
 
-    def state2policy(self, state: Optional[TensorType] = None) -> TensorType:
-        return self.state2oracle(state).flatten()
+    def state2policy(
+        self, state: Optional[TensorType] = None
+    ) -> TensorType["one_hot_length"]:
+        if state is None:
+            state = self.state.clone().detach()
+        return sum(map(self.node_to_tensor, self.leaf_indices))
 
     def statebatch2policy(
         self, states: List[List]
     ) -> TensorType["batch_size", "policy_input_dim"]:
-        return self.statebatch2oracle(states).flatten(start_dim=1)
+        return torch.stack(
+                list(map(self.state2policy, states)), 
+                axis = 0
+            ).flatten(start_dim=1)
     
     def statetorch2policy(self, states: TensorType) -> TensorType:
-        return self.statetorch2oracle(states).flatten(start_dim=1)
+        return torch.stack(
+                list(map(self.state2policy, torch.unbind(states, dim=-1))), 
+                axis = 0
+            ).flatten(start_dim=1)
 
     def policy2state(
         self, policy: Optional[TensorType["policy_input_dim"]] = None
