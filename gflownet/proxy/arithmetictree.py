@@ -27,6 +27,6 @@ class ArithmeticScorer(Proxy):
     ) -> TensorType["batch"]:
         # dummy test reward 1: more numbers in stock is better
         in_stock = sum(states[:, :, 0]==i for i in self.stock).bool()
-        return in_stock.sum(axis=1) / self.norm
+        return -1.0 * in_stock.sum(axis=1) / self.norm
         # dummy test reward 2: more bigger numbers is better
         # return -1.0 * states.sum(axis=(1, 2))
