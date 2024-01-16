@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import List, Optional, Tuple, Union
 from torchtyping import TensorType
 
+import numpy as np
+
 import torch
 
 from gflownet.envs.base import GFlowNetEnv
@@ -64,7 +66,7 @@ class ArithmeticBuilder(GFlowNetEnv):
                     else:
                         mask.append(True)
         mask.append(False)
-        self.mask_invalid_actions_forward_base = mask
+        self.mask_invalid_actions_forward_base = np.array(mask)
         # Base class init
         super().__init__(**kwargs)
 
@@ -214,6 +216,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         
         # Filter those where x is not a leaf
         mask = [True for _ in range(self.policy_output_dim - 1)] + [False]
+        mask = np.array(mask)
         n = len(self.int_range)
         leaf_indices = self.get_leaf_indices(state)
         for x in map(lambda idx: state[idx][0].item(), leaf_indices):
@@ -221,7 +224,7 @@ class ArithmeticBuilder(GFlowNetEnv):
                 start = n * n * opid + (x - self.min_int) * n
                 end = start + n
                 mask[start:end] = [False] * n
-        mask = mask or self.mask_invalid_actions_forward_base
+        mask = mask | self.mask_invalid_actions_forward_base
         if not self.allow_early_eos and not leaf_indices in self.stock:
             mask[-1] = True
         return mask
