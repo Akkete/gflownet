@@ -13,9 +13,9 @@ class ArithmeticBuilder(GFlowNetEnv):
 
     The goal is to create an arithmetic calculation that produces a target
     integer starting from only integers in 'stock'. A state is a bipartite tree
-    of integers and arithmetic operations. In each step one leaf integer x is
-    expanded into two integers a and b by applying an operation op to it such
-    that x = a op b.
+    of integers and arithmetic operations. In each step one leaf integer `x` is
+    expanded into two integers `a` and `b` by applying an operation `op` to it 
+    such that `x = a op b`.
     """
 
     def __init__(
@@ -147,7 +147,6 @@ class ArithmeticBuilder(GFlowNetEnv):
         updated_state[self._get_right_child(idx)][0] = b
         return updated_state
 
-
     def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
         """
         Converts an integer number into a one-hot vector representation.
@@ -161,13 +160,14 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         Constructs a list with all possible actions, including eos.
 
-        An action consists of choosing an operation op and integers a and b and
-        attaching them to a leaf node x. To be valid the action should be 
-        chosen such that x = a op b.
+        An action consists of choosing an operation `op` and integers `a` and 
+        `b` and attaching them to a leaf node `x`. To be valid the action 
+        should be chosen such that `x = a op b`.
 
-        Actions are represented by a tuple (x, b, opid). 
-        The integer a can be calculated by a = x inv b.
-        TODO: The integer x is automatically chosen for the agent.
+        Actions are represented by a tuple `(x, b, opid)`. 
+        The integer `a` can be calculated by `a = x inv b`.
+        
+        TODO: The integer `x` is automatically chosen for the agent.
         """
         # This implementation lists some actions that are never valid,
         # but the good thing is that there is always the same number of 
@@ -232,9 +232,10 @@ class ArithmeticBuilder(GFlowNetEnv):
 
         # Very slow alternative: check each action separately
         # mask = [False for _ in range(self.policy_output_dim)]
+        # leaf_indices = self.get_leaf_indices(state)
         # for idx, action in enumerate(self.action_space[:-1]):
         #     x, _, _ = action
-        #     if x not in map(lambda idx: state[idx][0], self.get_leaf_indices(state)):
+        #     if x not in map(lambda idx: state[idx][0], leaf_indices):
         #         mask[idx] = True
         # return mask
 
@@ -247,7 +248,8 @@ class ArithmeticBuilder(GFlowNetEnv):
         Args
         ----
         action : tuple
-            Action to be executed. An action is a tuple int values (x, b, opid)
+            Action to be executed. 
+            An action is a tuple int values `(x, b, opid)`
 
         skip_mask_check : bool
             If True, skip computing forward mask of invalid actions to check if 
@@ -319,8 +321,8 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         Determines all parents and actions that lead to state.
 
-        In continuous environments, get_parents() should return only the parent from
-        which action leads to state.
+        In continuous environments, `get_parents()` should return only the 
+        parent from which action leads to state.
 
         Args
         ----
@@ -328,7 +330,8 @@ class ArithmeticBuilder(GFlowNetEnv):
             Representation of a state
 
         done : bool
-            Whether the trajectory is done. If None, done is taken from instance.
+            Whether the trajectory is done. 
+            If None, done is taken from instance.
 
         action : None
             Ignored
@@ -366,7 +369,10 @@ class ArithmeticBuilder(GFlowNetEnv):
                 parent_state[idx][1] = -1
                 parent_state[right_child] = self.no_int
                 parent_state[left_child] = self.no_int
-                action = (int(state[idx][0]), int(state[right_child][0]), int(state[idx][1]))
+                action = (int(state[idx][0]), 
+                          int(state[right_child][0]), 
+                          int(state[idx][1])
+                         )
                 parents.append(parent_state)
                 actions.append(action)
         return parents, actions
@@ -460,7 +466,6 @@ class ArithmeticBuilder(GFlowNetEnv):
                 return f"({lc}{op}{rc})"
         return depth_first_traversal(0)
 
-
     def reset(self, env_id: Union[int, str] = None):
         """
         Resets the environment.
@@ -468,9 +473,9 @@ class ArithmeticBuilder(GFlowNetEnv):
         Args
         ----
         env_id: int or str
-            Unique (ideally) identifier of the environment instance, used to identify
-            the trajectory generated with this environment. If None, uuid.uuid4() is
-            used.
+            Unique (ideally) identifier of the environment instance, 
+            used to identify the trajectory generated with this environment. 
+            If None, uuid.uuid4() is used.
 
         Returns
         -------
@@ -481,6 +486,3 @@ class ArithmeticBuilder(GFlowNetEnv):
         # List of leaf indices is maintained, starts as root
         self.leaf_indices = [0]
         return self
-
-    
-
