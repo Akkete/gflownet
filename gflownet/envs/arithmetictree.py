@@ -39,7 +39,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         # End-of-sequence action
         self.eos = (0, 0, -1)
         # The initial state is a tree with just the target
-        self.max_n_nodes = 2**(max_operations + 2) - 1
+        self.max_n_nodes = 2**(max_operations + 1) - 1
         self.source = torch.stack((
             torch.full((self.max_n_nodes,), self.no_int),
             torch.full((self.max_n_nodes,), -1)
