@@ -26,6 +26,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         operations: List[str] = ['+', '*'],
         stock: List[int] = [1, -1, 2, -2, 3, -3],
         target: int = 0,
+        allow_early_eos: bool = True,
         **kwargs,
     ):
         self.device = set_device(kwargs["device"])
@@ -36,6 +37,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         self.int_range = range(self.min_int, self.max_int + 1)
         self.operations = operations
         self.stock = stock
+        self.allow_early_eos = allow_early_eos
         # End-of-sequence action
         self.eos = (0, 0, -1)
         # The initial state is a tree with just the target
@@ -213,12 +215,15 @@ class ArithmeticBuilder(GFlowNetEnv):
         # Filter those where x is not a leaf
         mask = [True for _ in range(self.policy_output_dim - 1)] + [False]
         n = len(self.int_range)
-        for x in map(lambda idx: state[idx][0].item(), self.leaf_indices):
+        leaf_indices = self.get_leaf_indices(state)
+        for x in map(lambda idx: state[idx][0].item(), leaf_indices):
             for opid in range(len(self.operations)):
                 start = n * n * opid + (x - self.min_int) * n
                 end = start + n
                 mask[start:end] = [False] * n
         mask = mask or self.mask_invalid_actions_forward_base
+        if not self.allow_early_eos and not leaf_indices in self.stock:
+            mask[-1] = True
         return mask
 
         # No masking
@@ -229,7 +234,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         # mask = [False for _ in range(self.policy_output_dim)]
         # for idx, action in enumerate(self.action_space[:-1]):
         #     x, _, _ = action
-        #     if x not in map(lambda idx: state[idx][0], self.leaf_indices):
+        #     if x not in map(lambda idx: state[idx][0], self.get_leaf_indices(state)):
         #         mask[idx] = True
         # return mask
 
@@ -291,7 +296,7 @@ class ArithmeticBuilder(GFlowNetEnv):
             leaf_to_expand = next(filter(
                 lambda idx: idx < self.max_n_nodes / 2 and 
                     self.state[idx][0] == x, 
-                self.leaf_indices
+                self.get_leaf_indices(self.state)
             ))
         except StopIteration:
             return self.state, action, False
@@ -403,7 +408,7 @@ class ArithmeticBuilder(GFlowNetEnv):
     ) -> TensorType["one_hot_length"]:
         if state is None:
             state = self.state.clone().detach()
-        return sum(map(self.node_to_tensor, self.leaf_indices))
+        return sum(map(self.node_to_tensor, self.get_leaf_indices(state)))
 
     def statebatch2policy(
         self, states: List[List]
