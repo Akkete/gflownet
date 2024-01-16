@@ -404,6 +404,35 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         return None
 
+    def state2readable(self, state: Optional[TensorType["state_dim"]] = None):
+        """
+        Converts a state into a readable arithmetic expression.
+        """
+        if state is None:
+            state = self.state.clone().detach()
+        def recurse(idx: int) -> str:
+            # index is out of bounds
+            if idx >= self.max_n_nodes:
+                return ","
+            # no node at index
+            elif state[idx][0] == self.no_int:
+                return "."
+            # node at index has no children
+            elif idx >= self.max_n_nodes / 2 or state[idx][1] == -1:
+               value = state[idx][0]
+               if value < 0:
+                   return f"({value})"
+               else:
+                   return f"{value}"
+            # node has children
+            else:
+                lc = recurse(self._get_left_child(idx))
+                rc = recurse(self._get_right_child(idx))
+                op = self.operations[state[idx][1]]
+                return f"({lc}{op}{rc})"
+        return recurse(0)
+
+
     def reset(self, env_id: Union[int, str] = None):
         """
         Resets the environment.
