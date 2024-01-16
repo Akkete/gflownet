@@ -101,7 +101,30 @@ class ArithmeticBuilder(GFlowNetEnv):
         right = ArithmeticBuilder._get_right_child(parent)
         return left if k == right else right
 
-    def _expand(
+    def get_leaf_indices(
+        self, 
+        state: Optional[TensorType] = None
+    ) -> List[int]:
+        if state == None:
+            state = self.state.clone().detac()
+        def depth_first_traversal(idx: int) -> List[int]:
+            # index is out of bounds
+            if idx >= self.max_n_nodes:
+                return []
+            # no node at index
+            elif state[idx][0] == self.no_int:
+                return []
+            # node at index has no children (is leaf)
+            elif idx >= self.max_n_nodes / 2 or state[idx][1] == -1:
+               return [idx]
+            # node has children
+            else:
+                lc = depth_first_traversal(self._get_left_child(idx))
+                rc = depth_first_traversal(self._get_right_child(idx))
+                return lc + rc
+        return depth_first_traversal(0)
+
+    def expand(
         self,
         idx: int, 
         opid: str, 
@@ -272,7 +295,7 @@ class ArithmeticBuilder(GFlowNetEnv):
             ))
         except StopIteration:
             return self.state, action, False
-        updated_state = self._expand(leaf_to_expand, opid, a, b)
+        updated_state = self.expand(leaf_to_expand, opid, a, b)
         # Update leaf nodes
         self.leaf_indices.remove(leaf_to_expand)
         self.leaf_indices.append(self._get_left_child(leaf_to_expand))
@@ -410,7 +433,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         if state is None:
             state = self.state.clone().detach()
-        def recurse(idx: int) -> str:
+        def depth_first_traversal(idx: int) -> str:
             # index is out of bounds
             if idx >= self.max_n_nodes:
                 return ","
@@ -426,11 +449,11 @@ class ArithmeticBuilder(GFlowNetEnv):
                    return f"{value}"
             # node has children
             else:
-                lc = recurse(self._get_left_child(idx))
-                rc = recurse(self._get_right_child(idx))
+                lc = depth_first_traversal(self._get_left_child(idx))
+                rc = depth_first_traversal(self._get_right_child(idx))
                 op = self.operations[state[idx][1]]
                 return f"({lc}{op}{rc})"
-        return recurse(0)
+        return depth_first_traversal(0)
 
 
     def reset(self, env_id: Union[int, str] = None):
