@@ -11,7 +11,7 @@ from gflownet.utils.common import set_device
 
 class ArithmeticBuilder(GFlowNetEnv):
     """
-    Environment that generates valid arithmetic alculations.
+    Environment that generates valid arithmetic calculations.
 
     The goal is to create an arithmetic calculation that produces a target
     integer starting from only integers in 'stock'. A state is a bipartite tree
