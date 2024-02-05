@@ -14,6 +14,27 @@ from aizynthfinder.context.stock import Stock
 from aizynthfinder.chem import Molecule
 from rdkit.Chem.AllChem import ReactionFromSmarts
 
+import os
+import copy
+
+class ReactionTree:
+    """
+    Represents a reaction tree. 
+    """
+    def __init__(
+        self,
+        molecules: List[Union[Molecule, None]],
+        reactions: List[int], # reaction index or -1 if no reaction
+        in_stock: List[bool]
+    ):
+        self.molecules = molecules
+        self.reactions = reactions
+        self.in_stock = in_stock
+
+    def copy(self):
+        return copy.copy(self)
+    
+
 class ReactionTreeBuilder(GFlowNetEnv):
     """
     Environment that generates retrosynthesis routes.
@@ -41,9 +62,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
         else:
             self.templates = pd.read_hdf(template_file, "table")
         # Load stock
-        stock = Stock()
-        stock.load(stock_file, "zinc")
-        stock.slect("zinc")
+        self.stock = Stock()
+        self.stock.load(stock_file, "zinc")
+        self.stock.select("zinc")
         # Set target
         self.target = Molecule(smiles = target_smiles)
         # Allow or not early termination
@@ -52,12 +73,12 @@ class ReactionTreeBuilder(GFlowNetEnv):
         self.eos = -1
         # The initial state is a tree with just the target
         self.max_n_nodes = 2**(max_reactions + 1) - 1
-        self.source = torch.stack((
-            torch.full((self.max_n_nodes,), None), # None or Molecule
-            torch.full((self.max_n_nodes,), -1), # Reaction index, -1=none 
-            torch.full((self.max_n_nodes,), False), # True if in stock
-        ), axis = 1).to(device=self.device)
-        self.source[0][0] = self.target
+        self.source = ReactionTree(
+            molecules = [None for _ in range(self.max_n_nodes)],
+            reactions = [-1 for _ in range(self.max_n_nodes)],
+            in_stock = [False for _ in range(self.max_n_nodes)]
+        )
+        self.source.molecules[0] = self.target
         # Base class init
         super().__init__(**kwargs)
 
@@ -98,19 +119,19 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def get_leaf_indices(
         self, 
-        state: Optional[TensorType] = None
+        state: Optional[ReactionTree] = None
     ) -> List[int]:
         if state == None:
-            state = self.state.clone().detac()
+            state = self.state.copy()
         def depth_first_traversal(idx: int) -> List[int]:
             # index is out of bounds
             if idx >= self.max_n_nodes:
                 return []
             # no node at index
-            elif state[idx][0] == self.no_int:
+            elif state.molecules[idx] == self.no_int:
                 return []
             # node at index has no children (is leaf)
-            elif idx >= self.max_n_nodes / 2 or state[idx][1] == -1:
+            elif idx >= self.max_n_nodes / 2 or state.reactions[idx] == -1:
                return [idx]
             # node has children
             else:
@@ -127,18 +148,18 @@ class ReactionTreeBuilder(GFlowNetEnv):
         Find first leaf that is not in stock.
         """
         if state == None:
-            state = self.state.clone().detac()
+            state = self.state.copy()
         def depth_first_traversal(idx: int) -> Optional[int]:
             # index is out of bounds
             if idx >= self.max_n_nodes:
                 return None
             # no node at index
-            elif state[idx][0] == None:
+            elif state.molecules[idx] == None:
                 return None
             # node at index has no children (is leaf)
-            elif idx >= self.max_n_nodes / 2 or state[idx][1] == -1:
+            elif idx >= self.max_n_nodes / 2 or state.reactions[idx] == -1:
                 # check if it is in stock or not
-                if state[idx][2] == False:
+                if state.in_stock[idx] == False:
                     return idx
                 else:
                     return None
@@ -159,35 +180,40 @@ class ReactionTreeBuilder(GFlowNetEnv):
         state: Optional[TensorType] = None
     ) -> TensorType:
         """
-        Expand node at index idx with reaction raection_id.
+        Expand node at index idx with reaction reaction_id.
         Return updated state.
         """
         if state:
-            updated_state = state.clone().detach()
+            state = state.copy()
         else:
-            updated_state = self.state.clone().detach()
+            state = self.state.copy()
+        assert state.molecules[idx] != None, "Trying to expand an empty node."
         reaction = ReactionFromSmarts(
             self.templates["retro_template"][reaction_id])
-        molecule = state[idx][0].rd_mol
-        reactants = reaction.RunReactants([molecule])
+        molecule = state.molecules[idx].rd_mol
+        reactants = reaction.RunReactants([molecule])[0]
         first_reactant = Molecule(rd_mol = reactants[0])
-        updated_state[idx][1] = reaction_id
+        state.reactions[idx] = reaction_id
         lc_idx = self._get_left_child(idx)
-        updated_state[lc_idx][0] = first_reactant
-        updated_state[lc_idx][2] = first_reactant in self.stock
+        state.molecules[lc_idx] = first_reactant
+        state.in_stock[lc_idx] = first_reactant in self.stock
         if len(reactants) > 1:
             second_reactant = Molecule(rd_mol = reactants[1])
             rc_idx = self._get_right_child(idx)
-            updated_state[rc_idx][0] = second_reactant
-            updated_state[rc_idx][2] = second_reactant in self.stock
-        return updated_state
+            state.molecules[rc_idx] = second_reactant
+            state.in_stock[rc_idx] = second_reactant in self.stock
+        return state
 
     def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
         """
-        Converts an integer number into a one-hot vector representation.
+        Converts a molecule into a vector fingerprint.
         """
-        tensor = torch.tensor(
-            self.state[idx][0].fingerprint(2, 64), device = self.device)
+        molecule = self.state.molecules[idx]
+        if molecule:
+            tensor = torch.tensor(
+                molecule.fingerprint(2, 64), device = self.device)
+        else:
+            tensor = torch.zeros((64,))
         return tensor
 
     def get_action_space(self):
@@ -206,7 +232,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         done: Optional[bool] = None,
     ):
         if state is None:
-            state = self.state.clone().detach()
+            state = self.state.copy()
         if done is None:
             done = self.done
         if done:
@@ -222,7 +248,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
         for idx, action in enumerate(self.action_space[:-1]):
                 reaction = ReactionFromSmarts(
                     self.templates["retro_template"][action])
-                mask[idx] = len(reaction.RunReactants(active_leaf)) == 0
+                molecule = state.molecules[active_leaf].rd_mol
+                mask[idx] = len(reaction.RunReactants([molecule])) == 0
         if not self.allow_early_eos and not all(mask[:-1]):
             mask[-1] = True
         return mask
@@ -268,7 +295,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         active_leaf = self.get_active_leaf()
         if active_leaf == None:
             return self.state, action, False
-        updated_state = self.expand(active_leaf, reaction_id)
+        updated_state = self.expand(active_leaf, reaction_id, self.state)
         # Update leaf nodes
         self.leaf_indices.remove(active_leaf)
         self.leaf_indices.append(self._get_left_child(active_leaf))
@@ -280,7 +307,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def get_parents(
         self,
-        state: Optional[List] = None,
+        state: Optional[ReactionTree] = None,
         done: Optional[bool] = None,
         action: Optional[Tuple] = None,
     ) -> Tuple[List, List]:
@@ -311,7 +338,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             List of actions that lead to state for each parent in parents
         """
         if state is None:
-            state = self.state.clone().detach()
+            state = self.state.copy()
         if done is None:
             done = self.done
         if done:
@@ -321,21 +348,21 @@ class ReactionTreeBuilder(GFlowNetEnv):
         stack = [0]
         while stack:
             idx = stack.pop()
-            if state[idx][1] == -1:
+            if state.reactions[idx] == -1:
                 continue
             left_child = self._get_left_child(idx)
             right_child = self._get_right_child(idx)
-            left_expanded = state[left_child][1] != -1
-            right_expanded = state[right_child][1] != -1
+            left_expanded = state.reactions[left_child] != -1
+            right_expanded = state.reactions[right_child] != -1
             if left_expanded or right_expanded:
                 stack.append(left_child)
                 stack.append(right_child)
             else:
-                parent_state = state.clone().detach()
-                parent_state[idx][1] = -1
+                parent_state = state.copy()
+                parent_state.reactions[idx] = -1
                 parent_state[right_child] = None
                 parent_state[left_child] = None
-                action = state[idx][1]
+                action = state.reactions[idx]
                 parents.append(parent_state)
                 actions.append(action)
         return parents[-1:], actions[-1:]
@@ -359,7 +386,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         self, state: Optional[TensorType] = None
     ) -> TensorType["one_hot_length"]:
         if state is None:
-            state = self.state.clone().detach()
+            state = self.state.copy()
         fingerprint = state[0].apply(self.node_to_tensor)
         return torch.stack(fingerprint, state[1], state[2], axis=1)
 
@@ -377,7 +404,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         self, state: Optional[TensorType] = None
     ) -> TensorType["one_hot_length"]:
         if state is None:
-            state = self.state.clone().detach()
+            state = self.state.copy()
         return self.node_to_tensor(self.get_active_leaf(state))
 
     def statebatch2policy(
@@ -407,8 +434,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
         Converts a state into a readable list of leaf molecules.
         """
         if state is None:
-            state = self.state.clone().detach()
-        leaf_molecules = state[self.get_leaf_indices(state)][0]
+            state = self.state.copy()
+        leaf_molecules = state.molecules[self.get_leaf_indices(state)]
         return ", ".join(map(lambda x: x.smiles, leaf_molecules))
 
     def reset(self, env_id: Union[int, str] = None):
