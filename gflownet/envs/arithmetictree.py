@@ -110,7 +110,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         state: Optional[TensorType] = None
     ) -> List[int]:
         if state == None:
-            state = self.state.clone().detac()
+            state = self.state.clone().detach()
         def depth_first_traversal(idx: int) -> List[int]:
             # index is out of bounds
             if idx >= self.max_n_nodes:
