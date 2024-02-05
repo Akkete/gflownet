@@ -5,9 +5,9 @@ _target_: gflownet.envs.reactiontree.ReactionTreeBuilder
 
 id: reactiontree
 max_reactions: 6
-template_file: "/data/reactiontree/uspto_templates.csv.gz"
-stock_file: "/data/reactiontree/zinc_stock.hdf5"
-target_smiles: "Cc1cccc(c1N(CC(=O)Nc2ccc(cc2)c3ncon3)C(=O)C4CCS(=O)(=O)CC4)C"
+template_file: 'data/reactiontree/uspto_templates.csv.gz'
+stock_file: 'data/reactiontree/zinc_stock.hdf5'
+target_smiles: 'Cc1cccc(c1N(CC(=O)Nc2ccc(cc2)c3ncon3)C(=O)C4CCS(=O)(=O)CC4)C'
 buffer:
   data_path: null
   train: null
