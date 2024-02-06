@@ -20,7 +20,8 @@ import os
 import copy
 
 # Load stock
-stock_file = "/m/home/home9/94/anttona2/data/Documents/research_project/gflownet/data/reactiontree/zinc_stock.hdf5"
+stock_file = ("/m/home/home9/94/anttona2/data/Documents/research_project"
+             "/gflownet/data/reactiontree/zinc_stock.hdf5")
 STOCK = Stock()
 STOCK.load(stock_file, "zinc")
 STOCK.select("zinc")
