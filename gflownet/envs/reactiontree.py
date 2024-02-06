@@ -19,6 +19,12 @@ from rdkit.Chem import MolToSmiles
 import os
 import copy
 
+# Load stock
+stock_file = "/m/home/home9/94/anttona2/data/Documents/research_project/gflownet/data/reactiontree/zinc_stock.hdf5"
+STOCK = Stock()
+STOCK.load(stock_file, "zinc")
+STOCK.select("zinc")
+
 class ReactionTree:
     """
     Represents a reaction tree. 
@@ -44,7 +50,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
     def __init__(
         self, 
         template_file: str,
-        stock_file: str,
+        # stock_file: str,
         target_smiles: str,
         max_reactions: int = 10, 
         allow_early_eos: bool = False,
@@ -62,10 +68,6 @@ class ReactionTreeBuilder(GFlowNetEnv):
             )
         else:
             self.templates = pd.read_hdf(template_file, "table")
-        # Load stock
-        self.stock = Stock()
-        self.stock.load(stock_file, "zinc")
-        self.stock.select("zinc")
         # Set target
         # self.target = Molecule(smiles = target_smiles)
         # Allow or not early termination
@@ -201,13 +203,13 @@ class ReactionTreeBuilder(GFlowNetEnv):
         state.reactions[idx] = reaction_id
         lc_idx = self._get_left_child(idx)
         state.molecules[lc_idx] = MolToSmiles(first_reactant)
-        state.in_stock[lc_idx] = Molecule(rd_mol = first_reactant) in self.stock
+        state.in_stock[lc_idx] = Molecule(rd_mol = first_reactant) in STOCK
         if len(reactants) > 1:
             second_reactant = reactants[1]
             aizynthfinder_mol = Molecule(rd_mol = second_reactant)
             rc_idx = self._get_right_child(idx)
             state.molecules[rc_idx] = MolToSmiles(second_reactant)
-            state.in_stock[rc_idx] = aizynthfinder_mol in self.stock
+            state.in_stock[rc_idx] = aizynthfinder_mol in STOCK
         return state
 
     def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
@@ -252,10 +254,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
         active_leaf = self.get_active_leaf(state)
         if active_leaf == None:
             return [True for _ in range(self.policy_output_dim - 1)] + [False]
+        molecule = MolFromSmiles(state.molecules[active_leaf])
         for idx, action in enumerate(self.action_space[:-1]):
                 reaction = ReactionFromSmarts(
                     self.templates["retro_template"][action])
-                molecule = MolFromSmiles(state.molecules[active_leaf])
                 mask[idx] = len(reaction.RunReactants([molecule])) == 0
         if not self.allow_early_eos and not all(mask[:-1]):
             mask[-1] = True
