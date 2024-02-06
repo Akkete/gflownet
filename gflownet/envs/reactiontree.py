@@ -416,7 +416,11 @@ class ReactionTreeBuilder(GFlowNetEnv):
     ) -> TensorType["one_hot_length"]:
         if state is None:
             state = self.state.copy()
-        return self.node_to_tensor(self.get_active_leaf(state))
+        active_leaf = self.get_active_leaf(state)
+        if active_leaf:
+            return self.node_to_tensor(active_leaf)
+        else:
+            return torch.zeros((64,))
 
     def statebatch2policy(
         self, states: List[List]
