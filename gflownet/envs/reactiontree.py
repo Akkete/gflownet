@@ -13,6 +13,8 @@ from gflownet.utils.common import set_device
 from aizynthfinder.context.stock import Stock
 from aizynthfinder.chem import Molecule
 from rdkit.Chem.AllChem import ReactionFromSmarts
+from rdkit.Chem import MolFromSmiles
+from rdkit.Chem import MolToSmiles
 
 import os
 import copy
@@ -23,7 +25,7 @@ class ReactionTree:
     """
     def __init__(
         self,
-        molecules: List[Union[Molecule, None]],
+        molecules: List[Union[str, None]],
         reactions: List[int], # reaction index or -1 if no reaction
         in_stock: List[bool]
     ):
@@ -33,7 +35,6 @@ class ReactionTree:
 
     def copy(self):
         return copy.copy(self)
-    
 
 class ReactionTreeBuilder(GFlowNetEnv):
     """
@@ -66,7 +67,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         self.stock.load(stock_file, "zinc")
         self.stock.select("zinc")
         # Set target
-        self.target = Molecule(smiles = target_smiles)
+        # self.target = Molecule(smiles = target_smiles)
         # Allow or not early termination
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
@@ -78,7 +79,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             reactions = [-1 for _ in range(self.max_n_nodes)],
             in_stock = [False for _ in range(self.max_n_nodes)]
         )
-        self.source.molecules[0] = self.target
+        self.source.molecules[0] = target_smiles
         # Base class init
         super().__init__(**kwargs)
 
@@ -190,18 +191,23 @@ class ReactionTreeBuilder(GFlowNetEnv):
         assert state.molecules[idx] != None, "Trying to expand an empty node."
         reaction = ReactionFromSmarts(
             self.templates["retro_template"][reaction_id])
-        molecule = state.molecules[idx].rd_mol
-        reactants = reaction.RunReactants([molecule])[0]
-        first_reactant = Molecule(rd_mol = reactants[0])
+        molecule = MolFromSmiles(state.molecules[idx])
+        reactants = reaction.RunReactants([molecule])
+        if len(reactants) > 0:
+            reactants = reactants[0]
+        else:
+            return None # warning bad solution
+        first_reactant = reactants[0]
         state.reactions[idx] = reaction_id
         lc_idx = self._get_left_child(idx)
-        state.molecules[lc_idx] = first_reactant
-        state.in_stock[lc_idx] = first_reactant in self.stock
+        state.molecules[lc_idx] = MolToSmiles(first_reactant)
+        state.in_stock[lc_idx] = Molecule(rd_mol = first_reactant) in self.stock
         if len(reactants) > 1:
-            second_reactant = Molecule(rd_mol = reactants[1])
+            second_reactant = reactants[1]
+            aizynthfinder_mol = Molecule(rd_mol = second_reactant)
             rc_idx = self._get_right_child(idx)
-            state.molecules[rc_idx] = second_reactant
-            state.in_stock[rc_idx] = second_reactant in self.stock
+            state.molecules[rc_idx] = MolToSmiles(second_reactant)
+            state.in_stock[rc_idx] = aizynthfinder_mol in self.stock
         return state
 
     def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
@@ -210,8 +216,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
         """
         molecule = self.state.molecules[idx]
         if molecule:
+            aizynthfinder_mol = Molecule(smiles = molecule)
             tensor = torch.tensor(
-                molecule.fingerprint(2, 64), device = self.device)
+                aizynthfinder_mol.fingerprint(2, 64), device = self.device)
         else:
             tensor = torch.zeros((64,))
         return tensor
@@ -248,7 +255,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         for idx, action in enumerate(self.action_space[:-1]):
                 reaction = ReactionFromSmarts(
                     self.templates["retro_template"][action])
-                molecule = state.molecules[active_leaf].rd_mol
+                molecule = MolFromSmiles(state.molecules[active_leaf])
                 mask[idx] = len(reaction.RunReactants([molecule])) == 0
         if not self.allow_early_eos and not all(mask[:-1]):
             mask[-1] = True
@@ -296,6 +303,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if active_leaf == None:
             return self.state, action, False
         updated_state = self.expand(active_leaf, reaction_id, self.state)
+        if updated_state == None:
+            return self.state, action, False # warning bad solution
         # Update leaf nodes
         self.leaf_indices.remove(active_leaf)
         self.leaf_indices.append(self._get_left_child(active_leaf))
@@ -436,7 +445,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if state is None:
             state = self.state.copy()
         leaf_molecules = state.molecules[self.get_leaf_indices(state)]
-        return ", ".join(map(lambda x: x.smiles, leaf_molecules))
+        return ", ".join(leaf_molecules)
 
     def reset(self, env_id: Union[int, str] = None):
         """
