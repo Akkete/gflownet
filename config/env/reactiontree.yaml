@@ -7,7 +7,7 @@ id: reactiontree
 template_file: /m/home/home9/94/anttona2/data/Documents/research_project/gflownet/data/reactiontree/uspto_templates.csv.gz
 # stock_file: /m/home/home9/94/anttona2/data/Documents/research_project/gflownet/data/reactiontree/zinc_stock.hdf5
 target_smiles: Cc1cccc(c1N(CC(=O)Nc2ccc(cc2)c3ncon3)C(=O)C4CCS(=O)(=O)CC4)C
-max_reactions: 6
+max_reactions: 3
 buffer:
   data_path: null
   train: null

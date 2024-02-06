@@ -52,7 +52,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         template_file: str,
         # stock_file: str,
         target_smiles: str,
-        max_reactions: int = 10, 
+        max_reactions: int = 5, 
         allow_early_eos: bool = False,
         **kwargs,
     ):
