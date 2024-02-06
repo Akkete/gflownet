@@ -200,16 +200,33 @@ class ReactionTreeBuilder(GFlowNetEnv):
         else:
             return None # warning bad solution
         first_reactant = reactants[0]
+        first_smiles = MolToSmiles(first_reactant)
+        first_aizynth = Molecule(rd_mol = first_reactant)
         state.reactions[idx] = reaction_id
         lc_idx = self._get_left_child(idx)
-        state.molecules[lc_idx] = MolToSmiles(first_reactant)
-        state.in_stock[lc_idx] = Molecule(rd_mol = first_reactant) in STOCK
+        state.molecules[lc_idx] = first_smiles
+        # Checking the stock sometimes fails because of unkekulizable molecules
+        # This is an ugly way to guard against that
+        try:
+            state.in_stock[lc_idx] = first_aizynth in STOCK
+        except:
+            return None
+        # Check for bad molecules
+        if MolFromSmiles(first_smiles) == None:
+            return None
         if len(reactants) > 1:
             second_reactant = reactants[1]
-            aizynthfinder_mol = Molecule(rd_mol = second_reactant)
+            second_smiles = MolToSmiles(second_reactant)
+            second_aizynth = Molecule(rd_mol = second_reactant)
             rc_idx = self._get_right_child(idx)
-            state.molecules[rc_idx] = MolToSmiles(second_reactant)
-            state.in_stock[rc_idx] = aizynthfinder_mol in STOCK
+            state.molecules[rc_idx] = second_smiles
+            try:
+                state.in_stock[rc_idx] = second_aizynth in STOCK
+            except:
+                return None
+            # Check for bad molecules
+            if MolFromSmiles(second_smiles) == None:
+                return None
         return state
 
     def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
@@ -233,6 +250,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         referred by its template code (index).
         """
         actions = list(range(self.templates.shape[0]))
+        actions.append(self.eos)
         return actions
 
     def get_mask_invalid_actions_forward(
