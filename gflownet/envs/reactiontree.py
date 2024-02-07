@@ -41,7 +41,7 @@ class ReactionTree:
         self.in_stock = in_stock
 
     def copy(self):
-        return copy.copy(self)
+        return copy.deepcopy(self)
 
 class ReactionTreeBuilder(GFlowNetEnv):
     """
@@ -250,7 +250,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         Every retroreaction template in the templates list is one action,
         referred by its template code (index).
         """
-        actions = list(range(self.templates.shape[0]))
+        actions = list(self.templates.index)
         actions.append(self.eos)
         return actions
 
@@ -326,7 +326,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         updated_state = self.expand(active_leaf, reaction_id, self.state)
         if updated_state == None:
             return self.state, action, False # warning bad solution
-        # Update leaf nodes
+        # Update leaf nodes (should currently be unused, TODO: remove)
         self.leaf_indices.remove(active_leaf)
         self.leaf_indices.append(self._get_left_child(active_leaf))
         self.leaf_indices.append(self._get_right_child(active_leaf))
@@ -390,8 +390,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
             else:
                 parent_state = state.copy()
                 parent_state.reactions[idx] = -1
-                parent_state[right_child] = None
-                parent_state[left_child] = None
+                parent_state.molecules[right_child] = None
+                parent_state.molecules[left_child] = None
+                parent_state.in_stock[right_child] = False
+                parent_state.in_stock[left_child] = False
                 action = state.reactions[idx]
                 parents.append(parent_state)
                 actions.append(action)
