@@ -74,7 +74,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # Allow or not early termination
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
-        self.eos = -1
+        self.eos = (-1,)
         # The initial state is a tree with just the target
         self.max_n_nodes = 2**(max_reactions + 1) - 1
         self.source = ReactionTree(
@@ -132,7 +132,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             if idx >= self.max_n_nodes:
                 return []
             # no node at index
-            elif state.molecules[idx] == self.no_int:
+            elif state.molecules[idx] == None:
                 return []
             # node at index has no children (is leaf)
             elif idx >= self.max_n_nodes / 2 or state.reactions[idx] == -1:
@@ -230,7 +230,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
                 return None
         return state
 
-    def node_to_tensor(self, idx: int) -> TensorType["one_hot_length"]:
+    def node_to_tensor(self, idx: int) -> TensorType["fingerprint_length"]:
         """
         Converts a molecule into a vector fingerprint.
         """
@@ -250,7 +250,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         Every retroreaction template in the templates list is one action,
         referred by its template code (index).
         """
-        actions = list(self.templates.index)
+        actions = [(x,) for x in self.templates.index]
         actions.append(self.eos)
         return actions
 
@@ -275,8 +275,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
             return [True for _ in range(self.policy_output_dim - 1)] + [False]
         molecule = MolFromSmiles(state.molecules[active_leaf])
         for idx, action in enumerate(self.action_space[:-1]):
+                reaction_index = action[0]
                 reaction = ReactionFromSmarts(
-                    self.templates["retro_template"][action])
+                    self.templates["retro_template"][reaction_index])
                 mask[idx] = len(reaction.RunReactants([molecule])) == 0
         if not self.allow_early_eos and not all(mask[:-1]):
             mask[-1] = True
@@ -319,7 +320,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             self.n_actions += 1
             return self.state, self.eos, True
         # If action is normal action, perform action
-        reaction_id = action
+        reaction_id = action[0]
         active_leaf = self.get_active_leaf()
         if active_leaf == None:
             return self.state, action, False
@@ -372,7 +373,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if done is None:
             done = self.done
         if done:
-            return [state], [self.eos,]
+            return [state], [self.eos]
         parents = []
         actions = []
         stack = [0]
@@ -385,8 +386,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
             left_expanded = state.reactions[left_child] != -1
             right_expanded = state.reactions[right_child] != -1
             if left_expanded or right_expanded:
-                stack.append(left_child)
                 stack.append(right_child)
+                stack.append(left_child)
             else:
                 parent_state = state.copy()
                 parent_state.reactions[idx] = -1
@@ -394,19 +395,19 @@ class ReactionTreeBuilder(GFlowNetEnv):
                 parent_state.molecules[left_child] = None
                 parent_state.in_stock[right_child] = False
                 parent_state.in_stock[left_child] = False
-                action = state.reactions[idx]
+                action = (state.reactions[idx],)
                 parents.append(parent_state)
                 actions.append(action)
         return parents[-1:], actions[-1:]
 
     def state2proxy(
         self, state: Optional[TensorType] = None
-    ) -> TensorType["one_hot_length"]:
+    ) -> TensorType["fingerprint_length"]:
         return self.state2oracle(state)
 
     def statebatch2proxy(
         self, states: List[TensorType]
-    ) -> TensorType["batch", "one_hot_length"]:
+    ) -> TensorType["batch", "fingerprint_length"]:
         return self.statebatch2oracle(states)
 
     def statetorch2proxy(
@@ -416,11 +417,17 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def state2oracle(
         self, state: Optional[TensorType] = None
-    ) -> TensorType["one_hot_length"]:
+    ) -> TensorType["self.max_n_nodes", "fingerprint_length + 2"]:
         if state is None:
             state = self.state.copy()
-        fingerprint = state[0].apply(self.node_to_tensor)
-        return torch.stack(fingerprint, state[1], state[2], axis=1)
+        fingerprints = [self.node_to_tensor(i) for i in range(self.max_n_nodes)]
+        fp_tensor = torch.stack(fingerprints, axis = 0)
+        reaction_tensor = torch.tensor(state.reactions).unsqueeze(dim = 1)
+        in_stock_tensor = torch.tensor(state.in_stock).unsqueeze(dim = 1)
+        return torch.cat((fp_tensor, reaction_tensor, in_stock_tensor), 
+                         axis = -1).to(
+                         dtype = torch.float32,
+                         device = self.device)
 
     def statebatch2oracle(
         self, states: List[TensorType]
@@ -429,12 +436,12 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def statetorch2oracle(
         self, states: TensorType["", "batch"]
-    ) -> TensorType["one_hot_length", "batch"]:
+    ) -> TensorType["fingerprint_length", "batch"]:
         return self.statebatch2oracle(torch.unbind(states, dim=-1))
 
     def state2policy(
         self, state: Optional[TensorType] = None
-    ) -> TensorType["one_hot_length"]:
+    ) -> TensorType["fingerprint_length"]:
         if state is None:
             state = self.state.copy()
         active_leaf = self.get_active_leaf(state)
@@ -445,7 +452,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def statebatch2policy(
         self, states: List[List]
-    ) -> TensorType["batch_size", "policy_input_dim"]:
+    ) -> TensorType["batch_size", "fingerprint_length"]:
         return torch.stack(
                 list(map(self.state2policy, states)), 
                 axis = 0
@@ -458,7 +465,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             ).flatten(start_dim=1)
 
     def policy2state(
-        self, policy: Optional[TensorType["policy_input_dim"]] = None
+        self, policy: Optional[TensorType["fingerprint_length"]] = None
     ) -> None:
         """
         Returns None to signal that the conversion is not reversible.
@@ -471,7 +478,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         """
         if state is None:
             state = self.state.copy()
-        leaf_molecules = state.molecules[self.get_leaf_indices(state)]
+        leaf_molecules = [state.molecules[idx] for idx in self.get_leaf_indices(state)]
         return ", ".join(leaf_molecules)
 
     def reset(self, env_id: Union[int, str] = None):
