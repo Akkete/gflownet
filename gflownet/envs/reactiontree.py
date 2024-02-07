@@ -240,7 +240,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             tensor = torch.tensor(
                 aizynthfinder_mol.fingerprint(2, 64), device = self.device)
         else:
-            tensor = torch.zeros((64,))
+            tensor = torch.zeros((64,), device = self.device)
         return tensor
 
     def get_action_space(self):
@@ -422,8 +422,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
             state = self.state.copy()
         fingerprints = [self.node_to_tensor(i) for i in range(self.max_n_nodes)]
         fp_tensor = torch.stack(fingerprints, axis = 0)
-        reaction_tensor = torch.tensor(state.reactions).unsqueeze(dim = 1)
-        in_stock_tensor = torch.tensor(state.in_stock).unsqueeze(dim = 1)
+        reaction_tensor = torch.tensor(state.reactions, 
+                                       device = self.device).unsqueeze(dim = 1)
+        in_stock_tensor = torch.tensor(state.in_stock, 
+                                       device = self.device).unsqueeze(dim = 1)
         return torch.cat((fp_tensor, reaction_tensor, in_stock_tensor), 
                          axis = -1).to(
                          dtype = torch.float32,
@@ -448,7 +450,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if active_leaf:
             return self.node_to_tensor(active_leaf)
         else:
-            return torch.zeros((64,))
+            return torch.zeros((64,), device = self.device)
 
     def statebatch2policy(
         self, states: List[List]
