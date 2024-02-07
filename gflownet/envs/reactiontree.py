@@ -311,7 +311,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             False, if the action is not allowed for the current state.
         """
         
-        do_step, self.state, action = self._pre_step(action, skip_mask_check)
+        do_step, self.state, action = self._pre_step(action, skip_mask_check=True)
         if not do_step:
             return self.state, action, False
         # If action is eos
