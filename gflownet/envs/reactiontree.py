@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 import torch
+from torch.nn.functional import pad
 
 from gflownet.envs.base import GFlowNetEnv
 from gflownet.utils.common import set_device
@@ -32,13 +33,15 @@ class ReactionTree:
     """
     def __init__(
         self,
-        molecules: List[Union[str, None]],
+        molecules: List[str],
         reactions: List[int], # reaction index or -1 if no reaction
-        in_stock: List[bool]
+        in_stock: List[bool],
+        children: List[List[int]] # empty list signifies no children
     ):
         self.molecules = molecules
         self.reactions = reactions
         self.in_stock = in_stock
+        self.children = children
 
     def copy(self):
         return copy.deepcopy(self)
@@ -69,57 +72,20 @@ class ReactionTreeBuilder(GFlowNetEnv):
             )
         else:
             self.templates = pd.read_hdf(template_file, "table")
-        # Set target
-        # self.target = Molecule(smiles = target_smiles)
         # Allow or not early termination
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
         self.eos = (-1,)
         # The initial state is a tree with just the target
-        self.max_n_nodes = 2**(max_reactions + 1) - 1
         self.source = ReactionTree(
-            molecules = [None for _ in range(self.max_n_nodes)],
-            reactions = [-1 for _ in range(self.max_n_nodes)],
-            in_stock = [False for _ in range(self.max_n_nodes)]
+            molecules = [target_smiles],
+            reactions = [-1],
+            in_stock = [False],
+            children = [[]]
         )
-        self.source.molecules[0] = target_smiles
+        self.max_n_nodes = 2**(max_reactions + 1) - 1
         # Base class init
         super().__init__(**kwargs)
-
-    @staticmethod
-    def _get_parent(k: int) -> Optional[int]:
-        """
-        Get node index of a parent of k-th node.
-        """
-        if k == 0:
-            return None
-        return (k - 1) // 2
-
-    @staticmethod
-    def _get_left_child(k: int) -> int:
-        """
-        Get node index of a left child of k-th node.
-        """
-        return 2 * k + 1
-
-    @staticmethod
-    def _get_right_child(k: int) -> int:
-        """
-        Get node index of a right child of k-th node.
-        """
-        return 2 * k + 2
-
-    @staticmethod
-    def _get_sibling(k: int) -> Optional[int]:
-        """
-        Get node index of the sibling of k-th node.
-        """
-        parent = ReactionTreeBuilder._get_parent(k)
-        if parent is None:
-            return None
-        left = ReactionTreeBuilder._get_left_child(parent)
-        right = ReactionTreeBuilder._get_right_child(parent)
-        return left if k == right else right
 
     def get_leaf_indices(
         self, 
@@ -128,20 +94,15 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if state == None:
             state = self.state.copy()
         def depth_first_traversal(idx: int) -> List[int]:
-            # index is out of bounds
-            if idx >= self.max_n_nodes:
-                return []
-            # no node at index
-            elif state.molecules[idx] == None:
-                return []
             # node at index has no children (is leaf)
-            elif idx >= self.max_n_nodes / 2 or state.reactions[idx] == -1:
+            if state.children[idx] == []:
                return [idx]
             # node has children
             else:
-                lc = depth_first_traversal(self._get_left_child(idx))
-                rc = depth_first_traversal(self._get_right_child(idx))
-                return lc + rc
+                list_of_results = [depth_first_traversal(child) 
+                                   for child in state.children[idx]]
+                flattened_result = sum(list_of_results, [])
+                return flattened_result
         return depth_first_traversal(0)
     
     def get_active_leaf(
@@ -154,14 +115,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if state == None:
             state = self.state.copy()
         def depth_first_traversal(idx: int) -> Optional[int]:
-            # index is out of bounds
-            if idx >= self.max_n_nodes:
-                return None
-            # no node at index
-            elif state.molecules[idx] == None:
-                return None
             # node at index has no children (is leaf)
-            elif idx >= self.max_n_nodes / 2 or state.reactions[idx] == -1:
+            if state.children[idx] == []:
                 # check if it is in stock or not
                 if state.in_stock[idx] == False:
                     return idx
@@ -169,12 +124,12 @@ class ReactionTreeBuilder(GFlowNetEnv):
                     return None
             # node has children
             else:
-                lc = depth_first_traversal(self._get_left_child(idx))
-                if lc:
-                    return lc
-                else:
-                    rc = depth_first_traversal(self._get_right_child(idx))
-                    return rc
+                for child in state.children[idx]:
+                    result_from_child = depth_first_traversal(child)
+                    if result_from_child:
+                        return result_from_child
+                # if no child produces a reuslt, return None
+                return None
         return depth_first_traversal(0)
 
     def expand(
@@ -200,33 +155,21 @@ class ReactionTreeBuilder(GFlowNetEnv):
             reactants = reactants[0]
         else:
             return None # warning bad solution
-        first_reactant = reactants[0]
-        first_smiles = MolToSmiles(first_reactant)
-        first_aizynth = Molecule(rd_mol = first_reactant)
         state.reactions[idx] = reaction_id
-        lc_idx = self._get_left_child(idx)
-        state.molecules[lc_idx] = first_smiles
-        # Checking the stock sometimes fails because of unkekulizable molecules
-        # This is an ugly way to guard against that
-        try:
-            state.in_stock[lc_idx] = first_aizynth in STOCK
-        except:
-            return None
-        # Check for bad molecules
-        if MolFromSmiles(first_smiles) == None:
-            return None
-        if len(reactants) > 1:
-            second_reactant = reactants[1]
-            second_smiles = MolToSmiles(second_reactant)
-            second_aizynth = Molecule(rd_mol = second_reactant)
-            rc_idx = self._get_right_child(idx)
-            state.molecules[rc_idx] = second_smiles
+        for reactant in reactants:
+            smiles = MolToSmiles(reactant)
+            aizynth = Molecule(rd_mol = reactant)
+            state.molecules.append(smiles)
+            state.reactions.append(-1)
             try:
-                state.in_stock[rc_idx] = second_aizynth in STOCK
+                in_stock = aizynth in STOCK
+                state.in_stock.append(in_stock)
             except:
                 return None
+            state.children[idx].append(len(state.molecules)-1)
+            state.children.append([])
             # Check for bad molecules
-            if MolFromSmiles(second_smiles) == None:
+            if MolFromSmiles(smiles) == None:
                 return None
         return state
 
@@ -234,7 +177,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
         """
         Converts a molecule into a vector fingerprint.
         """
-        molecule = self.state.molecules[idx]
+        try: 
+            molecule = self.state.molecules[idx]
+        except:
+            molecule = None
         if molecule:
             aizynthfinder_mol = Molecule(smiles = molecule)
             tensor = torch.tensor(
@@ -327,10 +273,6 @@ class ReactionTreeBuilder(GFlowNetEnv):
         updated_state = self.expand(active_leaf, reaction_id, self.state)
         if updated_state == None:
             return self.state, action, False # warning bad solution
-        # Update leaf nodes (should currently be unused, TODO: remove)
-        self.leaf_indices.remove(active_leaf)
-        self.leaf_indices.append(self._get_left_child(active_leaf))
-        self.leaf_indices.append(self._get_right_child(active_leaf))
         # Increment number of actions, update state and return
         self.n_actions += 1
         self.state = updated_state
@@ -374,31 +316,18 @@ class ReactionTreeBuilder(GFlowNetEnv):
             done = self.done
         if done:
             return [state], [self.eos]
-        parents = []
-        actions = []
-        stack = [0]
-        while stack:
-            idx = stack.pop()
-            if state.reactions[idx] == -1:
-                continue
-            left_child = self._get_left_child(idx)
-            right_child = self._get_right_child(idx)
-            left_expanded = state.reactions[left_child] != -1
-            right_expanded = state.reactions[right_child] != -1
-            if left_expanded or right_expanded:
-                stack.append(right_child)
-                stack.append(left_child)
-            else:
+        for idx, child_list in enumerate(state.children):
+            if child_list and child_list[-1] == len(state.molecules)-1:
                 parent_state = state.copy()
                 parent_state.reactions[idx] = -1
-                parent_state.molecules[right_child] = None
-                parent_state.molecules[left_child] = None
-                parent_state.in_stock[right_child] = False
-                parent_state.in_stock[left_child] = False
+                parent_state.children[idx] = []
+                for _ in child_list:
+                    del parent_state.molecules[-1]
+                    del parent_state.reactions[-1]
+                    del parent_state.in_stock[-1]
+                    del parent_state.children[-1]
                 action = (state.reactions[idx],)
-                parents.append(parent_state)
-                actions.append(action)
-        return parents[-1:], actions[-1:]
+                return [parent_state], [action]
 
     def state2proxy(
         self, state: Optional[TensorType] = None
@@ -423,9 +352,14 @@ class ReactionTreeBuilder(GFlowNetEnv):
         fingerprints = [self.node_to_tensor(i) for i in range(self.max_n_nodes)]
         fp_tensor = torch.stack(fingerprints, axis = 0)
         reaction_tensor = torch.tensor(state.reactions, 
-                                       device = self.device).unsqueeze(dim = 1)
+                                       device = self.device)
         in_stock_tensor = torch.tensor(state.in_stock, 
-                                       device = self.device).unsqueeze(dim = 1)
+                                       device = self.device)
+        padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
+        reaction_tensor = pad(reaction_tensor, padding)
+        in_stock_tensor = pad(in_stock_tensor, padding)
+        reaction_tensor = reaction_tensor.unsqueeze(dim = 1)
+        in_stock_tensor = in_stock_tensor.unsqueeze(dim = 1)
         return torch.cat((fp_tensor, reaction_tensor, in_stock_tensor), 
                          axis = -1).to(
                          dtype = torch.float32,
