@@ -352,14 +352,14 @@ class ReactionTreeBuilder(GFlowNetEnv):
         fingerprints = [self.node_to_tensor(i) for i in range(self.max_n_nodes)]
         fp_tensor = torch.stack(fingerprints, axis = 0)
         reaction_tensor = torch.tensor(state.reactions, 
-                                       device = self.device)
+                                       device=self.device)
         in_stock_tensor = torch.tensor(state.in_stock, 
-                                       device = self.device)
+                                       device=self.device)
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
         reaction_tensor = pad(reaction_tensor, padding)
         in_stock_tensor = pad(in_stock_tensor, padding)
-        reaction_tensor = reaction_tensor.unsqueeze(dim = 1)
-        in_stock_tensor = in_stock_tensor.unsqueeze(dim = 1)
+        reaction_tensor = reaction_tensor.unsqueeze(dim=1)
+        in_stock_tensor = in_stock_tensor.unsqueeze(dim=1)
         return torch.cat((fp_tensor, reaction_tensor, in_stock_tensor), 
                          axis = -1).to(
                          dtype = torch.float32,
