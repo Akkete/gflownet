@@ -29,7 +29,7 @@ STOCK.select("zinc")
 
 class ReactionTree:
     """
-    Represents a reaction tree. 
+    Represents a reaction tree.
     """
     def __init__(
         self,
@@ -38,6 +38,10 @@ class ReactionTree:
         in_stock: List[bool],
         children: List[List[int]] # empty list signifies no children
     ):
+        self.__len = len(molecules)
+        assert (self.__len == len(reactions) and
+                self.__len == len(in_stock) and
+                self.__len == len(children)), "Lengths should match"
         self.molecules = molecules
         self.reactions = reactions
         self.in_stock = in_stock
@@ -45,6 +49,15 @@ class ReactionTree:
 
     def copy(self):
         return copy.deepcopy(self)
+    
+    def __len__(self):
+        return self.__len
+    
+    def __getitem__(self, idx):
+        {"molecule": self.molecules[idx],
+         "reaction": self.reactions[idx],
+         "in_stock": self.in_stock[idx],
+         "children": self.children[idx]}
 
 class ReactionTreeBuilder(GFlowNetEnv):
     """
