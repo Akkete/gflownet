@@ -85,6 +85,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             )
         else:
             self.templates = pd.read_hdf(template_file, "table")
+        self.reactions = self.templates["retro_template"].apply(ReactionFromSmarts)
         # Allow or not early termination
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
@@ -235,8 +236,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         molecule = MolFromSmiles(state.molecules[active_leaf])
         for idx, action in enumerate(self.action_space[:-1]):
                 reaction_index = action[0]
-                reaction = ReactionFromSmarts(
-                    self.templates["retro_template"][reaction_index])
+                reaction = self.reactions[reaction_index]
                 mask[idx] = len(reaction.RunReactants([molecule])) == 0
         if not self.allow_early_eos and not all(mask[:-1]):
             mask[-1] = True
