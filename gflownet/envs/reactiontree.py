@@ -97,7 +97,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
             in_stock = [False],
             children = [[]]
         )
-        self.max_n_nodes = 2**(max_reactions + 1) - 1
+        # The maximum number of nodes in the reaction tree 
+        # is five times number of reactions plus one, 
+        # because each reaction has a maximum of five children
+        self.max_n_nodes = max_reactions *  5 + 1
         # Base class init
         super().__init__(**kwargs)
 
