@@ -365,21 +365,38 @@ class ReactionTreeBuilder(GFlowNetEnv):
     ) -> TensorType["self.max_n_nodes", "fingerprint_length + 2"]:
         if state is None:
             state = self.state.copy()
+        # Fingerprints are provided by a helper function 
+        # that also deals with missing values.
+        # No padding needed.
         fingerprints = [self.node_to_tensor(i) for i in range(self.max_n_nodes)]
-        fp_tensor = torch.stack(fingerprints, axis = 0)
+        fngrprnt_tensor = torch.stack(fingerprints, axis = 0)
+        # The other lists are first created as variable length and then padded.
         reaction_tensor = torch.tensor(state.reactions, 
                                        device=self.device)
         in_stock_tensor = torch.tensor(state.in_stock, 
                                        device=self.device)
+        children_tensor = torch.tensor(map(len, state.children), 
+                                           device=self.device)
+        # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
         reaction_tensor = pad(reaction_tensor, padding)
         in_stock_tensor = pad(in_stock_tensor, padding)
+        children_tensor = pad(in_stock_tensor, padding)
         reaction_tensor = reaction_tensor.unsqueeze(dim=1)
         in_stock_tensor = in_stock_tensor.unsqueeze(dim=1)
-        return torch.cat((fp_tensor, reaction_tensor, in_stock_tensor), 
-                         axis = -1).to(
-                         dtype = torch.float32,
-                         device = self.device)
+        children_tensor = in_stock_tensor.unsqueeze(dim=1)
+        # Return the concatenated tensor
+        return torch.cat(
+            (
+                fngrprnt_tensor, 
+                reaction_tensor, 
+                in_stock_tensor,
+                children_tensor,
+            ), 
+            axis = -1).to(
+            dtype = torch.float32,
+            device = self.device
+        )
 
     def statebatch2oracle(
         self, states: List[TensorType]

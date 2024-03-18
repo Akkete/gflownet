@@ -6,7 +6,7 @@ from torchtyping import TensorType
 from gflownet.proxy.base import Proxy
 
 class ReactionTreeScorer(Proxy):
-    def __init__(self, normalize: bool = True, **kwargs):
+    def __init__(self, normalize: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.normalize = normalize
 
@@ -26,5 +26,10 @@ class ReactionTreeScorer(Proxy):
         self, states: TensorType["batch", "state_dim"]
     ) -> TensorType["batch"]:
         # dummy test reward 1: more molecules in stock is better
-        in_stock = states[:, :, -1].sum(axis=-1)
-        return -1.0 * in_stock / self.norm
+        # in_stock = states[:, :, -2].sum(axis=-1)
+        # return -1.0 * in_stock / self.norm
+        # test reward 2
+        leaf = states[:, :, -1] == 0
+        leaf_not_in_stock = states[leaf][: -2].sum(axis=-1)
+        reactions = (states[:, :, -3] != -1).sum(axis=-1)
+        return 20.0 * leaf_not_in_stock + reactions
