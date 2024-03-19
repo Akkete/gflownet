@@ -375,16 +375,16 @@ class ReactionTreeBuilder(GFlowNetEnv):
                                        device=self.device)
         in_stock_tensor = torch.tensor(state.in_stock, 
                                        device=self.device)
-        children_tensor = torch.tensor(map(len, state.children), 
+        children_tensor = torch.tensor(list(map(len, state.children)), 
                                            device=self.device)
         # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
         reaction_tensor = pad(reaction_tensor, padding)
         in_stock_tensor = pad(in_stock_tensor, padding)
-        children_tensor = pad(in_stock_tensor, padding)
+        children_tensor = pad(children_tensor, padding)
         reaction_tensor = reaction_tensor.unsqueeze(dim=1)
         in_stock_tensor = in_stock_tensor.unsqueeze(dim=1)
-        children_tensor = in_stock_tensor.unsqueeze(dim=1)
+        children_tensor = children_tensor.unsqueeze(dim=1)
         # Return the concatenated tensor
         return torch.cat(
             (
