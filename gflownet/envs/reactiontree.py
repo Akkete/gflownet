@@ -77,15 +77,20 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # Pytorch device may be supplied as a kwarg
         self.device = set_device(kwargs["device"])
         # Maximum number of reactions
-        # TODO: use maximum depth instead
+        # TODO: optionally use maximum depth instead
         self.max_reactions = max_reactions
+        # If template_file is given as a relative path, 
+        # it is interpreted to be relative to the project root.
+        template_path = Path(template_file)
+        if not template_path.is_absolute():
+            template_path = PROJECT_ROOT / template_path
         # Load templates
-        if template_file.endswith(".csv.gz") or template_file.endswith(".csv"):
+        if ".csv" in template_path.suffixes:
             self.templates: pd.DataFrame = pd.read_csv(
-                template_file, index_col=0, sep="\t"
+                str(template_path), index_col=0, sep="\t"
             )
         else:
-            self.templates = pd.read_hdf(template_file, "table")
+            self.templates = pd.read_hdf(str(template_path), "table")
         self.reactions = self.templates["retro_template"].apply(ReactionFromSmarts)
         # Allow or not early termination
         self.allow_early_eos = allow_early_eos
