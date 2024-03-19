@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).parents[2]
 # Load stock
 stock_file = PROJECT_ROOT / "data/reactiontree/zinc_stock.hdf5"
 STOCK = Stock()
-STOCK.load(stock_file, "zinc")
+STOCK.load(str(stock_file), "zinc")
 STOCK.select("zinc")
 
 class ReactionTree:
@@ -170,8 +170,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
         else:
             state = self.state.copy()
         assert state.molecules[idx] != None, "Trying to expand an empty node."
-        reaction = ReactionFromSmarts(
-            self.templates["retro_template"][reaction_id])
+        # reaction = ReactionFromSmarts(
+        #     self.templates["retro_template"][reaction_id])
+        reaction = self.reactions[reaction_id]
         molecule = MolFromSmiles(state.molecules[idx])
         reactants = reaction.RunReactants([molecule])
         if len(reactants) > 0:
@@ -381,7 +382,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
                                        device=self.device)
         in_stock_tensor = torch.tensor(state.in_stock, 
                                        device=self.device)
-        children_tensor = torch.tensor(map(len, state.children), 
+        children_tensor = torch.tensor(list(map(len, state.children)), 
                                            device=self.device)
         # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
