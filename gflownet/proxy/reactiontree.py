@@ -32,6 +32,6 @@ class ReactionTreeScorer(Proxy):
         leaf = states[:, :, -1] == 0
         leaf_not_in_stock = (leaf * states[:, :, -2]).sum(axis=-1)
         reactions = (states[:, :, -3] != -1).sum(axis=-1)
-        return - 21.0 * self.max_n_nodes \
-               + 20.0 * leaf_not_in_stock \
-               +  1.0 * reactions
+        return (- 21.0 * 3 # self.max_n_nodes 
+                + 20.0 * leaf_not_in_stock 
+                + 1.0 * reactions)
