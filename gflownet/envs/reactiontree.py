@@ -55,10 +55,10 @@ class ReactionTree:
         return self.__len
     
     def __getitem__(self, idx):
-        {"molecule": self.molecules[idx],
-         "reaction": self.reactions[idx],
-         "in_stock": self.in_stock[idx],
-         "children": self.children[idx]}
+        return {"molecule": self.molecules[idx],
+                "reaction": self.reactions[idx],
+                "in_stock": self.in_stock[idx],
+                "children": self.children[idx]}
 
 class ReactionTreeBuilder(GFlowNetEnv):
     """
@@ -454,22 +454,23 @@ class ReactionTreeBuilder(GFlowNetEnv):
         """
         if state is None:
             state = self.state.copy()
-        reactions = filter(lambda x: x != -1, state.reactions)
+        reactions = list(filter(lambda x: x != -1, state.reactions))
         leaf_mols_in_stock = []
         leaf_mols_not_in_stock = []
         for i in range(len(state)):
-            if len(state[i].children) == 0:
-                if state[i].in_stock:
-                    leaf_mols_in_stock.append(state[i].molecule)
+            if len(state[i]["children"]) == 0:
+                if state[i]["in_stock"]:
+                    leaf_mols_in_stock.append(state[i]["molecule"])
                 else:
-                    leaf_mols_not_in_stock.append(state[i].molecule)
+                    leaf_mols_not_in_stock.append(state[i]["molecule"])
         leaf_mols_in_stock_str = ", ".join(leaf_mols_in_stock)
         leaf_mols_not_in_stock_str = ", ".join(leaf_mols_not_in_stock)
-        reactions_str = ", ".join(reactions)
+        reactions_str = ", ".join(map(str, reactions))
         return (f"Number of reactions: {len(reactions)}"
                 f"\nReaction indices: {reactions_str}"
                 f"\nMolecules in stock ({len(leaf_mols_in_stock)}): {leaf_mols_in_stock_str}"
                 f"\nMissing from stock ({len(leaf_mols_not_in_stock)}): {leaf_mols_not_in_stock_str}")
+    
     def reset(self, env_id: Union[int, str] = None):
         """
         Resets the environment.
