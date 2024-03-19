@@ -165,8 +165,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
         else:
             state = self.state.copy()
         assert state.molecules[idx] != None, "Trying to expand an empty node."
-        reaction = ReactionFromSmarts(
-            self.templates["retro_template"][reaction_id])
+        # reaction = ReactionFromSmarts(
+        #     self.templates["retro_template"][reaction_id])
+        reaction = self.reactions[reaction_id]
         molecule = MolFromSmiles(state.molecules[idx])
         reactants = reaction.RunReactants([molecule])
         if len(reactants) > 0:
