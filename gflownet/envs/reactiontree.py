@@ -17,14 +17,15 @@ from rdkit.Chem.AllChem import ReactionFromSmarts
 from rdkit.Chem import MolFromSmiles
 from rdkit.Chem import MolToSmiles
 
-import os
+from pathlib import Path
 import copy
 
+PROJECT_ROOT = Path(__file__).parents[2]
+
 # Load stock
-stock_file = ("/m/home/home9/94/anttona2/data/Documents/research_project"
-             "/gflownet/data/reactiontree/zinc_stock.hdf5")
+stock_file = PROJECT_ROOT / "data/reactiontree/zinc_stock.hdf5"
 STOCK = Stock()
-STOCK.load(stock_file, "zinc")
+STOCK.load(str(stock_file), "zinc")
 STOCK.select("zinc")
 
 class ReactionTree:
