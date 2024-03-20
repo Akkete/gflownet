@@ -38,4 +38,4 @@ class ReactionTreeScorer(Proxy):
         # test reward 3: binary reward
         leaf = states[:, :, -1] == 0
         leaf_not_in_stock = (leaf * states[:, :, -2]).any(axis=-1)
-        return leaf_not_in_stock - 1.0
+        return 1.0 * leaf_not_in_stock - 1.0
