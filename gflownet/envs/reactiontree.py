@@ -52,13 +52,14 @@ class ReactionTree:
         return copy.deepcopy(self)
     
     def __len__(self):
-        return self.__len
+        return (len(self.molecules))
+        # return self.__len
     
     def __getitem__(self, idx):
-        {"molecule": self.molecules[idx],
-         "reaction": self.reactions[idx],
-         "in_stock": self.in_stock[idx],
-         "children": self.children[idx]}
+        return {"molecule": self.molecules[idx],
+                "reaction": self.reactions[idx],
+                "in_stock": self.in_stock[idx],
+                "children": self.children[idx]}
 
 class ReactionTreeBuilder(GFlowNetEnv):
     """
@@ -386,9 +387,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
                                            device=self.device)
         # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
-        reaction_tensor = pad(reaction_tensor, padding)
+        reaction_tensor = pad(reaction_tensor, padding, value=-1)
         in_stock_tensor = pad(in_stock_tensor, padding)
-        children_tensor = pad(children_tensor, padding)
+        children_tensor = pad(children_tensor, padding, value=-1)
         reaction_tensor = reaction_tensor.unsqueeze(dim=1)
         in_stock_tensor = in_stock_tensor.unsqueeze(dim=1)
         children_tensor = children_tensor.unsqueeze(dim=1)
@@ -448,14 +449,33 @@ class ReactionTreeBuilder(GFlowNetEnv):
         """
         return None
 
-    def state2readable(self, state: Optional[TensorType["state_dim"]] = None):
+    def state2readable(self, state: Optional[ReactionTree] = None):
         """
-        Converts a state into a readable list of leaf molecules.
+        Converts a state into a readable summary.
         """
         if state is None:
             state = self.state.copy()
-        leaf_molecules = [state.molecules[idx] for idx in self.get_leaf_indices(state)]
-        return ", ".join(leaf_molecules)
+        reactions = list(filter(lambda x: x != -1, state.reactions))
+        leaf_mols_in_stock = []
+        leaf_mols_not_in_stock = []
+        for i in range(len(state)):
+            if len(state[i]["children"]) == 0:
+                if state[i]["in_stock"]:
+                    leaf_mols_in_stock.append(state[i]["molecule"])
+                else:
+                    leaf_mols_not_in_stock.append(state[i]["molecule"])
+        leaf_mols_in_stock_str = ", ".join(leaf_mols_in_stock)
+        leaf_mols_not_in_stock_str = ", ".join(leaf_mols_not_in_stock)
+        reactions_str = ", ".join(map(str, reactions))
+        return "\n".join([ 
+            f"Reaction tree summary", 
+            F"---------------------",
+            f"Target: {state.molecules[0]}", 
+            f"Number of reactions: {len(reactions)}", 
+            f"Reaction indices: {reactions_str}", 
+            f"Molecules in stock ({len(leaf_mols_in_stock)}): {leaf_mols_in_stock_str}", 
+            f"Missing from stock ({len(leaf_mols_not_in_stock)}): {leaf_mols_not_in_stock_str}",
+        ])
 
     def reset(self, env_id: Union[int, str] = None):
         """
