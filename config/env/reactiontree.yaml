@@ -11,4 +11,7 @@ max_reactions: 3
 buffer:
   data_path: null
   train: null
-  test: null
+  test: 
+    type: random
+    output_csv: reactiontree_test.csv
+    output_pkl: reactiontree_test.pkl
