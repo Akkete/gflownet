@@ -25,13 +25,17 @@ class ReactionTreeScorer(Proxy):
     def __call__(
         self, states: TensorType["batch", "state_dim"]
     ) -> TensorType["batch"]:
-        # dummy test reward 1: more molecules in stock is better
+        # # dummy test reward 1: more molecules in stock is better
         # in_stock = states[:, :, -2].sum(axis=-1)
         # return -1.0 * in_stock / self.norm
-        # test reward 2
+        # # test reward 2
+        # leaf = states[:, :, -1] == 0
+        # leaf_not_in_stock = (leaf * states[:, :, -2]).sum(axis=-1)
+        # reactions = (states[:, :, -3] != -1).sum(axis=-1)
+        # return (- 21.0 * 3 # self.max_n_nodes 
+        #         + 20.0 * leaf_not_in_stock 
+        #         + 1.0 * reactions)
+        # test reward 3: binary reward
         leaf = states[:, :, -1] == 0
-        leaf_not_in_stock = (leaf * states[:, :, -2]).sum(axis=-1)
-        reactions = (states[:, :, -3] != -1).sum(axis=-1)
-        return (- 21.0 * 3 # self.max_n_nodes 
-                + 20.0 * leaf_not_in_stock 
-                + 1.0 * reactions)
+        leaf_not_in_stock = (leaf * states[:, :, -2]).any(axis=-1)
+        return leaf_not_in_stock - 1.0
