@@ -29,6 +29,7 @@ class ReactionTreeScorer(Proxy):
         # in_stock = states[:, :, -2].sum(axis=-1)
         # return -1.0 * in_stock / self.norm
         # # test reward 2
+        # leaf = states[:, :, -1] == 0
         # not_in_stock = states[:, :, -2] == 0
         # leaf_not_in_stock = (leaf & not_in_stock).sum(axis=-1)
         # reactions = (states[:, :, -3] != -1).sum(axis=-1)
@@ -37,5 +38,6 @@ class ReactionTreeScorer(Proxy):
         #         + 1.0 * reactions)
         # test reward 3: binary reward
         leaf = states[:, :, -1] == 0
-        leaf_not_in_stock = (leaf * states[:, :, -2]).any(axis=-1)
+        not_in_stock = states[:, :, -2] == 0
+        leaf_not_in_stock = (leaf & not_in_stock).any(axis=-1)
         return 1.0 * leaf_not_in_stock - 1.0
