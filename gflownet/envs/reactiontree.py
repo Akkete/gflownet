@@ -389,7 +389,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
         reaction_tensor = pad(reaction_tensor, padding, value=-1)
         in_stock_tensor = pad(in_stock_tensor, padding)
-        children_tensor = pad(children_tensor, padding)
+        children_tensor = pad(children_tensor, padding, value=-1)
         reaction_tensor = reaction_tensor.unsqueeze(dim=1)
         in_stock_tensor = in_stock_tensor.unsqueeze(dim=1)
         children_tensor = children_tensor.unsqueeze(dim=1)
