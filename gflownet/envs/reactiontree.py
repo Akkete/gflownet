@@ -52,7 +52,8 @@ class ReactionTree:
         return copy.deepcopy(self)
     
     def __len__(self):
-        return self.__len
+        return (len(self.molecules))
+        # return self.__len
     
     def __getitem__(self, idx):
         return {"molecule": self.molecules[idx],
@@ -386,7 +387,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
                                            device=self.device)
         # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
-        reaction_tensor = pad(reaction_tensor, padding)
+        reaction_tensor = pad(reaction_tensor, padding, value=-1)
         in_stock_tensor = pad(in_stock_tensor, padding)
         children_tensor = pad(children_tensor, padding)
         reaction_tensor = reaction_tensor.unsqueeze(dim=1)
@@ -466,11 +467,16 @@ class ReactionTreeBuilder(GFlowNetEnv):
         leaf_mols_in_stock_str = ", ".join(leaf_mols_in_stock)
         leaf_mols_not_in_stock_str = ", ".join(leaf_mols_not_in_stock)
         reactions_str = ", ".join(map(str, reactions))
-        return (f"Number of reactions: {len(reactions)}"
-                f"\nReaction indices: {reactions_str}"
-                f"\nMolecules in stock ({len(leaf_mols_in_stock)}): {leaf_mols_in_stock_str}"
-                f"\nMissing from stock ({len(leaf_mols_not_in_stock)}): {leaf_mols_not_in_stock_str}")
-    
+        return "\n".join([ 
+            f"Reaction tree summary", 
+            F"---------------------",
+            f"Target: {state.molecules[0]}", 
+            f"Number of reactions: {len(reactions)}", 
+            f"Reaction indices: {reactions_str}", 
+            f"Molecules in stock ({len(leaf_mols_in_stock)}): {leaf_mols_in_stock_str}", 
+            f"Missing from stock ({len(leaf_mols_not_in_stock)}): {leaf_mols_not_in_stock_str}",
+        ])
+
     def reset(self, env_id: Union[int, str] = None):
         """
         Resets the environment.
