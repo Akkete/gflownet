@@ -92,7 +92,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
             )
         else:
             self.templates = pd.read_hdf(str(template_path), "table")
-        self.reactions = self.templates["retro_template"].apply(ReactionFromSmarts)
+        self.reactions = self.templates["retro_template"]\
+                             .apply(ReactionFromSmarts)
         # Allow or not early termination
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
@@ -281,7 +282,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
             False, if the action is not allowed for the current state.
         """
         
-        do_step, self.state, action = self._pre_step(action, skip_mask_check=True)
+        do_step, self.state, action = self._pre_step(action, 
+                                                     skip_mask_check=True)
         if not do_step:
             return self.state, action, False
         # If action is eos
@@ -384,7 +386,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         in_stock_tensor = torch.tensor(state.in_stock, 
                                        device=self.device)
         children_tensor = torch.tensor(list(map(len, state.children)), 
-                                           device=self.device)
+                                       device=self.device)
         # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
         reaction_tensor = pad(reaction_tensor, padding, value=-1)
@@ -473,8 +475,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
             f"Target: {state.molecules[0]}", 
             f"Number of reactions: {len(reactions)}", 
             f"Reaction indices: {reactions_str}", 
-            f"Molecules in stock ({len(leaf_mols_in_stock)}): {leaf_mols_in_stock_str}", 
-            f"Missing from stock ({len(leaf_mols_not_in_stock)}): {leaf_mols_not_in_stock_str}",
+            f"Molecules in stock ({len(leaf_mols_in_stock)}): "
+            f"{leaf_mols_in_stock_str}", 
+            f"Missing from stock ({len(leaf_mols_not_in_stock)}): "
+            f"{leaf_mols_not_in_stock_str}",
         ])
 
     def reset(self, env_id: Union[int, str] = None):
