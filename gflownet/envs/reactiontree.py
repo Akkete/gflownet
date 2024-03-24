@@ -356,12 +356,13 @@ class ReactionTreeBuilder(GFlowNetEnv):
                 return [parent_state], [action]
 
     def state2proxy(
-        self, state: Optional[TensorType] = None
+        self, state: Optional[ReactionTree] = None
     ) -> TensorType["fingerprint_length"]:
+        self.get_parents
         return self.state2oracle(state)
 
     def statebatch2proxy(
-        self, states: List[TensorType]
+        self, states: List[ReactionTree]
     ) -> TensorType["batch", "fingerprint_length"]:
         return self.statebatch2oracle(states)
 
@@ -371,8 +372,18 @@ class ReactionTreeBuilder(GFlowNetEnv):
         return self.statetorch2oracle(states)
 
     def state2oracle(
-        self, state: Optional[TensorType] = None
-    ) -> TensorType["self.max_n_nodes", "fingerprint_length + 2"]:
+        self, state: Optional[ReactionTree] = None
+    ) -> TensorType["self.max_n_nodes", "fingerprint_length + 3"]:
+        """
+        Converts state into a tensor used by oracles. 
+
+        Each molecule is converted to a fingerprint, which are in
+        result[:, :fingerprint_length]. Reaction indices are in result[:, -3].
+        Boolean (0 or 1) values marking which molecules are in stock are in
+        result[:, -2]. Children counts for each molecule are in result[:, -1].
+        For empty molecules the fingerprint is all zeroes and the other fields
+        are -1.
+        """
         if state is None:
             state = self.state.copy()
         # Fingerprints are provided by a helper function 
@@ -384,19 +395,20 @@ class ReactionTreeBuilder(GFlowNetEnv):
         reaction_tensor = torch.tensor(state.reactions, 
                                        device=self.device)
         in_stock_tensor = torch.tensor(state.in_stock, 
-                                       device=self.device)
+                                       device=self.device,
+                                       dtype=torch.float32)
         children_tensor = torch.tensor(list(map(len, state.children)), 
                                        device=self.device)
         # Pad and reshape
         padding = (0, self.max_n_nodes - reaction_tensor.shape[0])
         reaction_tensor = pad(reaction_tensor, padding, value=-1)
-        in_stock_tensor = pad(in_stock_tensor, padding)
+        in_stock_tensor = pad(in_stock_tensor, padding, value=-1)
         children_tensor = pad(children_tensor, padding, value=-1)
         reaction_tensor = reaction_tensor.unsqueeze(dim=1)
         in_stock_tensor = in_stock_tensor.unsqueeze(dim=1)
         children_tensor = children_tensor.unsqueeze(dim=1)
         # Return the concatenated tensor
-        return torch.cat(
+        result = torch.cat(
             (
                 fngrprnt_tensor, 
                 reaction_tensor, 
@@ -407,6 +419,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             dtype = torch.float32,
             device = self.device
         )
+        return result
 
     def statebatch2oracle(
         self, states: List[TensorType]
