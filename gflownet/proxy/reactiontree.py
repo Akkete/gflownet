@@ -8,7 +8,7 @@ from gflownet.proxy.base import Proxy
 class ReactionTreeScorer(Proxy):
     def __init__(
         self, 
-        completetion_reward: float,
+        completion_reward: float,
         leaf_in_stock_reward: float,
         leaf_not_in_stock_reward: float,
         reaction_count_reward: float,
@@ -16,7 +16,7 @@ class ReactionTreeScorer(Proxy):
         **kwargs
     ):
         super().__init__(**kwargs)
-        self.completetion_reward = completetion_reward
+        self.completion_reward = completion_reward
         self.leaf_in_stock_reward = leaf_in_stock_reward
         self.leaf_not_in_stock_reward = leaf_not_in_stock_reward
         self.reaction_count_reward = reaction_count_reward
@@ -28,8 +28,8 @@ class ReactionTreeScorer(Proxy):
             self.max_n_nodes = env.max_n_nodes
             if self.base_reward == None:
                 self.base_reward = 0.0
-                if self.completetion_reward < 0.0:
-                    self.base_reward += -self.completetion_reward
+                if self.completion_reward < 0.0:
+                    self.base_reward += -self.completion_reward
                 if self.leaf_in_stock_reward < 0.0:
                     self.base_reward += -self.leaf_in_stock_reward * (self.max_n_nodes - 1.0)
                 if self.leaf_not_in_stock_reward < 0.0:
@@ -53,7 +53,7 @@ class ReactionTreeScorer(Proxy):
         is_complete = 1.0 - incomplete
         score = sum([
             self.base_reward,
-            self.completetion_reward * is_complete,
+            self.completion_reward * is_complete,
             self.leaf_in_stock_reward * leaf_in_stock_count,
             self.leaf_not_in_stock_reward * leaf_not_in_stock_count,
             self.reaction_count_reward * reaction_count,
