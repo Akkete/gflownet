@@ -110,8 +110,8 @@ def test__pad_depad_action(env):
         ],
     ],
 )
-def test__state2oracle__returns_expected_value(env, state, expected):
-    assert torch.allclose(env.state2oracle(state), expected, atol=1e-4)
+def test__state2proxy__returns_expected_value(env, state, expected):
+    assert torch.allclose(env.state2proxy(state), expected, atol=1e-4)
 
 
 @pytest.mark.parametrize(
@@ -216,8 +216,8 @@ def test__state2proxy__returns_expected_value(env, state, expected):
         ],
     ],
 )
-def test__statebatch2proxy__returns_expected_value(env, batch, expected):
-    assert torch.allclose(env.statebatch2proxy(batch), expected, atol=1e-4)
+def test__states2proxy__returns_expected_value(env, batch, expected):
+    assert torch.allclose(env.states2proxy(batch), expected, atol=1e-4)
 
 
 @pytest.mark.parametrize("action", [(1, 1, -2, -2, -2, -2), (3, 4, -2, -2, -2, -2)])
@@ -472,9 +472,23 @@ def test__get_mask_invalid_actions_forward__masks_all_actions_from_different_sta
         )
 
 
-def test__all_env_common(env):
-    return common.test__all_env_common(env)
+class TestCrystalBasic(common.BaseTestsDiscrete):
+    @pytest.fixture(autouse=True)
+    def setup(self, env):
+        self.env = env
+        self.repeats = {
+            "test__get_logprobs__backward__returns_zero_if_done": 100,  # Overrides no repeat.
+            "test__reset__state_is_source": 10,
+        }
+        self.n_states = {}  # TODO: Populate.
 
 
-def test__all_env_common(env_with_stoichiometry_sg_check):
-    return common.test__all_env_common(env_with_stoichiometry_sg_check)
+class TestCrystalStoichiometrySGCheck(common.BaseTestsDiscrete):
+    @pytest.fixture(autouse=True)
+    def setup(self, env_with_stoichiometry_sg_check):
+        self.env = env_with_stoichiometry_sg_check
+        self.repeats = {
+            "test__get_logprobs__backward__returns_zero_if_done": 100,  # Overrides no repeat.
+            "test__reset__state_is_source": 10,
+        }
+        self.n_states = {}  # TODO: Populate.
