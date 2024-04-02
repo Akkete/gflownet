@@ -1,3 +1,2 @@
 logdir:
-  root: ../logs/gflownet
-  
+  root: external/logs/gflownet
