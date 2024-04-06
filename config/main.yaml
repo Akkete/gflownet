@@ -5,7 +5,7 @@ defaults:
   - policy: mlp_${gflownet}
   - proxy: reactiontree
   - logger: wandb
-  - user: akkete
+  - user: default
 
 # Device
 device: cuda

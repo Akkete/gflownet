@@ -11,7 +11,7 @@ from gflownet.utils.common import set_device
 
 class ArithmeticBuilder(GFlowNetEnv):
     """
-    Environment that generates valid arithmetic alculations.
+    Environment that generates valid arithmetic calculations.
 
     The goal is to create an arithmetic calculation that produces a target
     integer starting from only integers in 'stock'. A state is a bipartite tree
@@ -120,7 +120,7 @@ class ArithmeticBuilder(GFlowNetEnv):
                 return []
             # node at index has no children (is leaf)
             elif idx >= self.max_n_nodes / 2 or state[idx][1] == -1:
-               return [idx]
+                return [idx]
             # node has children
             else:
                 lc = depth_first_traversal(self._get_left_child(idx))
@@ -385,10 +385,10 @@ class ArithmeticBuilder(GFlowNetEnv):
     ) -> TensorType["one_hot_length"]:
         return self.state2oracle(state)
 
-    def statebatch2proxy(
+    def states2proxy(
         self, states: List[TensorType]
     ) -> TensorType["batch", "one_hot_length"]:
-        return self.statebatch2oracle(states)
+        return self.states2oracle(states)
 
     def statetorch2proxy(
         self, states: TensorType["batch", "state_dim"]
@@ -402,7 +402,7 @@ class ArithmeticBuilder(GFlowNetEnv):
             state = self.state.clone().detach()
         return state
 
-    def statebatch2oracle(
+    def states2oracle(
         self, states: List[TensorType]
     ) -> TensorType["batch", "state_oracle_dim"]:
         return torch.stack(list(map(self.state2oracle, states)), axis = 0)
@@ -410,7 +410,7 @@ class ArithmeticBuilder(GFlowNetEnv):
     def statetorch2oracle(
         self, states: TensorType["", "batch"]
     ) -> TensorType["one_hot_length", "batch"]:
-        return self.statebatch2oracle(torch.unbind(states, dim=-1))
+        return self.states2oracle(torch.unbind(states, dim=-1))
 
     def state2policy(
         self, state: Optional[TensorType] = None
@@ -419,7 +419,7 @@ class ArithmeticBuilder(GFlowNetEnv):
             state = self.state.clone().detach()
         return sum(map(self.node_to_tensor, self.get_leaf_indices(state)))
 
-    def statebatch2policy(
+    def states2policy(
         self, states: List[List]
     ) -> TensorType["batch_size", "policy_input_dim"]:
         return torch.stack(
@@ -456,11 +456,11 @@ class ArithmeticBuilder(GFlowNetEnv):
                 return "."
             # node at index has no children
             elif idx >= self.max_n_nodes / 2 or state[idx][1] == -1:
-               value = state[idx][0]
-               if value < 0:
-                   return f"({value})"
-               else:
-                   return f"{value}"
+                value = state[idx][0]
+                if value < 0:
+                    return f"({value})"
+                else:
+                    return f"{value}"
             # node has children
             else:
                 lc = depth_first_traversal(self._get_left_child(idx))

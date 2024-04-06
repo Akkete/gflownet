@@ -145,6 +145,12 @@ class Logger:
         else:
             self.pb_ckpt_path = self.ckpts_dir / f"{ckpt_id}_"
 
+    def set_state_flow_ckpt_path(self, ckpt_id: str = None):
+        if ckpt_id is None:
+            self.sf_ckpt_path = None
+        else:
+            self.sf_ckpt_path = self.ckpts_dir / f"{ckpt_id}_"
+
     def progressbar_update(
         self, pbar, losses, rewards, jsd, step, use_context=True, n_mean=100
     ):
@@ -332,6 +338,9 @@ class Logger:
         corr_prob_traj_rewards: float,
         var_logrewards_logp: float,
         nll_tt: float,
+        mean_logprobs_std: float,
+        mean_probs_std: float,
+        logprobs_std_nll_ratio: float,
         step: int,
         use_context: bool,
     ):
@@ -346,8 +355,21 @@ class Logger:
                     "Corr. (test probs., rewards)",
                     "Var(logR - logp) test",
                     "NLL of test data",
+                    "Mean BS Std(logp)",
+                    "Mean BS Std(p)",
+                    "BS Std(logp) / NLL",
                 ],
-                [l1, kl, jsd, corr_prob_traj_rewards, var_logrewards_logp, nll_tt],
+                [
+                    l1,
+                    kl,
+                    jsd,
+                    corr_prob_traj_rewards,
+                    var_logrewards_logp,
+                    nll_tt,
+                    mean_logprobs_std,
+                    mean_probs_std,
+                    logprobs_std_nll_ratio,
+                ],
             )
         )
         self.log_metrics(
@@ -357,7 +379,7 @@ class Logger:
         )
 
     def save_models(
-        self, forward_policy, backward_policy, step: int = 1e9, final=False
+        self, forward_policy, backward_policy, state_flow, step: int = 1e9, final=False
     ):
         if self.do_checkpoints(step) or final:
             if final:
@@ -376,6 +398,11 @@ class Logger:
                 stem = self.pb_ckpt_path.stem + self.context + ckpt_id + ".ckpt"
                 path = self.pb_ckpt_path.parent / stem
                 torch.save(backward_policy.model.state_dict(), path)
+
+            if state_flow is not None and self.sf_ckpt_path is not None:
+                stem = self.sf_ckpt_path.stem + self.context + ckpt_id + ".ckpt"
+                path = self.sf_ckpt_path.parent / stem
+                torch.save(state_flow.model.state_dict(), path)
 
     def log_time(self, times: dict, use_context: bool):
         if self.do.times:
