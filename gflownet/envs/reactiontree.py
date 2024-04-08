@@ -11,22 +11,22 @@ from torch.nn.functional import pad
 from gflownet.envs.base import GFlowNetEnv
 from gflownet.utils.common import set_device
 
-from aizynthfinder.context.stock import Stock
-from aizynthfinder.chem import Molecule
-from rdkit.Chem.AllChem import ReactionFromSmarts
-from rdkit.Chem import MolFromSmiles
-from rdkit.Chem import MolToSmiles
-
-from pathlib import Path
-import copy
-
-PROJECT_ROOT = Path(__file__).parents[2]
-
-# Load stock
-stock_file = PROJECT_ROOT / "data/reactiontree/zinc_stock.hdf5"
-STOCK = Stock()
-STOCK.load(str(stock_file), "zinc")
-STOCK.select("zinc")
+# from aizynthfinder.context.stock import Stock
+# from aizynthfinder.chem import Molecule
+# from rdkit.Chem.AllChem import ReactionFromSmarts
+# from rdkit.Chem import MolFromSmiles
+# from rdkit.Chem import MolToSmiles
+# 
+# from pathlib import Path
+# import copy
+# 
+# PROJECT_ROOT = Path(__file__).parents[2]
+# 
+# # Load stock
+# stock_file = PROJECT_ROOT / "data/reactiontree/zinc_stock.hdf5"
+# STOCK = Stock()
+# STOCK.load(str(stock_file), "zinc")
+# STOCK.select("zinc")
 
 class ReactionTree:
     """
@@ -35,7 +35,7 @@ class ReactionTree:
     def __init__(
         self,
         molecules: List[str],
-        reactions: List[int], # reaction index or -1 if no reaction
+        reactions: List[int], # reaction index or -1 if no reaction (leaf node)
         in_stock: List[bool],
         children: List[List[int]] # empty list signifies no children
     ):
