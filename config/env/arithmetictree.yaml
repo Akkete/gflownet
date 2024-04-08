@@ -4,12 +4,13 @@ defaults:
 _target_: gflownet.envs.arithmetictree.ArithmeticBuilder
 
 id: arithmetictree
-max_operations: 6
-min_int: 0
-max_int:  9
+max_operations: 5
+min_int: 1
+max_int:  4
 opaerations: ['+', '*']
 stock: [1, 2]
-target: 9
+target: 4
+allow_early_eos: False
 buffer:
   data_path: null
   train: null

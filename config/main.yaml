@@ -1,11 +1,11 @@
 defaults:
   - _self_
-  - env: reactiontree
+  - env: arithmetictree
   - gflownet: flowmatch
   - policy: mlp_${gflownet}
-  - proxy: reactiontree
+  - proxy: uniform
   - logger: wandb
-  - user: default
+  - user: akkete
 
 # Device
 device: cuda
