@@ -35,7 +35,14 @@ class ArithmeticTree:
         self.n_operations = 0
     
     def copy(self) -> ArithmeticTree:
-        return copy.deepcopy(self)
+        """
+        Returns a copy of the object. 
+        
+        The graph object is not shared between copies, but stock is.
+        """
+        copy_of_self = copy.copy(self)
+        copy_of_self.graph = copy_of_self.graph.copy()
+        return copy_of_self
     
     def __repr__(self) -> str:
         return str(list(self.graph.nodes))
