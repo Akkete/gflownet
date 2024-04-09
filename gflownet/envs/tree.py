@@ -1438,7 +1438,7 @@ class Tree(GFlowNetEnv):
     @staticmethod
     def _compute_scores(
         predictions: npt.NDArray, y: npt.NDArray
-    ) -> (dict, npt.NDArray):
+    ) -> Tuple[dict, npt.NDArray]:
         """
         Computes accuracy and balanced accuracy metrics for given predictions and ground
         truth labels.
