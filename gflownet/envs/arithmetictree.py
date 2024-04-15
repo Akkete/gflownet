@@ -535,18 +535,18 @@ class ArithmeticBuilder(GFlowNetEnv):
 
     def states2proxy(
         self, states: List[ArithmeticTree]
-    ) -> TensorType["batch", "state_proxy_dim"]:
-        return self.states2oracle(states)
+    ) -> List[ArithmeticTree]:
+        return states
 
     def states2oracle(
         self, states: List[ArithmeticTree]
-    ) -> TensorType["batch", "state_oracle_dim"]:
-        return torch.stack(list(map(self.state2tensor, states)), axis = 0)
+    ) -> List[ArithmeticTree]:
+        return states
 
     def states2policy(
         self, states: List[ArithmeticTree]
     ) -> TensorType["batch_size", "policy_input_dim"]:
-        return self.states2oracle(states).flatten(1, -1)
+        return torch.stack(list(map(self.state2tensor, states)), axis = 0).flatten(1, -1)
 
     def state2readable(self, state: Optional[ArithmeticTree] = None):
         """
