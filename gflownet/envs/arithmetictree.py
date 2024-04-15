@@ -1,6 +1,7 @@
 from __future__ import annotations
 from functools import cache
-from typing import List, Optional, Tuple, Union, Dict, Set
+from typing import List, Optional, Tuple, Union, Dict
+from typing_extensions import Self
 from torchtyping import TensorType
 from numpy.typing import NDArray
 
@@ -20,16 +21,18 @@ class ArithmeticTree:
     """
     Reperesents the parse tree of an arithmetic expression.
 
-    The arithmetic tree is instantinated by supplying the target and stock.
+    The arithmetic tree is instantinated by supplying stock.
+    It starts as an empty graph.
     It should then be modified with the methods
+    - `select_target(target_value)`,
+    - `unselect_target()`,
     - `select_leaf(idx)`, 
     - `unselect_leaf()`,
     - `expand(operation, operands)`, and
     - `unexpand(idx)`.
     """
-    def __init__(self, target: int, stock: List[int]):
+    def __init__(self, stock: List[int]):
         self.graph = nx.DiGraph()
-        self.graph.add_node(0, integer=target, operation=-1, in_stock=0)
         self.stock = stock
         self._selected_leaf: Optional[int] = None
         self.n_operations = 0
@@ -68,6 +71,8 @@ class ArithmeticTree:
         return next(self.graph.predecessors(idx), None)
     
     def is_complete(self) -> bool:
+        if len(self.graph.nodes) == 0:
+            return False
         leaf_indices = self.get_leaf_nodes()
         return all(self.graph.nodes[i]["in_stock"] for i in leaf_indices)
 
@@ -77,16 +82,34 @@ class ArithmeticTree:
     def get_selected_leaf(self) -> Optional[int]:
         return self._selected_leaf
 
-    def select_leaf(self, idx: int) -> None:
+    def select_target(self, target_value: int) -> Self:
+        """Sets the target. Should only be called when the tree is empty."""
+        assert len(self.graph.nodes) == 0
+        self.graph.add_node(0, integer=target_value, operation=-1, in_stock=0)
+        return self
+
+    def unselect_target(self) -> Self:
+        """
+        Unselects target returning to the empty state. Should only be called 
+        when there is one node left in the tree and it has index 0. Needed as a
+        backward action.
+        """
+        assert list(self.graph.nodes) == [0], "Only root should be in graph."
+        self.graph.remove_node(0)
+        return self
+
+    def select_leaf(self, idx: int) -> Self:
         """Sets the selected leaf."""
         assert  self.graph.out_degree(idx) == 0 , "Must select a leaf."
         self._selected_leaf = idx
+        return self
 
-    def unselect_leaf(self) -> None:
+    def unselect_leaf(self) -> Self:
         """Sets selected leaf to None. Needed as backward action."""
         self._selected_leaf = None
+        return self
 
-    def expand(self, operation: int, operands: List[int]) -> None:
+    def expand(self, operation: int, operands: List[int]) -> Self:
         """
         Expand selected leaf with operation opid and a list of operands.
         Unsets selected leaf.
@@ -104,8 +127,9 @@ class ArithmeticTree:
             self.graph.add_edge(self._selected_leaf, new_idx)
         self._selected_leaf = None
         self.n_operations += 1
+        return self
 
-    def unexpand(self, idx: int) -> None:
+    def unexpand(self, idx: int) -> Self:
         """
         Reverse the expansion of a node. Deletes child nodes of the node at idx
         and unsets the operator attribute at idx. The unexpanded node becomes
@@ -120,6 +144,7 @@ class ArithmeticTree:
         self.graph.nodes[idx]["operation"] = -1
         self._selected_leaf = idx
         self.n_operations -= 1
+        return self
     
     def get_unexpandable(self) -> List[int]:
         """Returns a list of nodes that could be uexpanded."""
@@ -132,6 +157,12 @@ class ArithmeticTree:
             ):
                 result.append(node)
         return result
+
+class ActionType:
+    STOP = 0
+    SELECT_TARGET = 1
+    SELECT_LEAF = 2
+    EXPAND = 3
 
 class ArithmeticBuilder(GFlowNetEnv):
     """
@@ -150,13 +181,10 @@ class ArithmeticBuilder(GFlowNetEnv):
         max_int: int = +9,
         operations: List[str] = ['+', '*'],
         stock: List[int] = [1, -1, 2, -2],
-        target: int = 0,
         max_operations: int = 10, 
         allow_early_eos: bool = True,
         **kwargs,
     ):
-        assert target <= max_int, "Target can't be larger than max_int."
-        assert target >= min_int, "Target can't be smaller than min_int."
         assert operations, "Operations can't be empty."
         assert (
             all(op in ['+', '*'] for op in operations)
@@ -178,9 +206,9 @@ class ArithmeticBuilder(GFlowNetEnv):
         # Is early stopping allowed
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
-        self.eos = (0, 0, 0)
-        # The initial state is a tree with just the target
-        self.source = ArithmeticTree(target, stock)
+        self.eos = (ActionType.STOP, 0, 0)
+        # The initial state is an empty arithmetic tree object
+        self.source = ArithmeticTree(stock)
         # Max number of nodes is two times the number of opeartions plus one
         # This comes from the assumption that each operation takes in
         # two operands.
@@ -211,25 +239,29 @@ class ArithmeticBuilder(GFlowNetEnv):
 
         Actions are represented by tuples
         - The end-of-sequence (eos) action looks like this: (0, 0, 0)
-        - Leaf-selection actions look like this: `(1, idx, 0)`
-        - Expansion actions look like this: `(2, opid, b)`
+        - Target-selection actions look like this: `(1, target_value, 0)`
+        - Leaf-selection actions look like this: `(2, idx, 0)`
+        - Expansion actions look like this: `(3, opid, b)`
 
         Let `x` be the integer at `idx`, `op` be the operation at `opid`, 
         and `inv` be inverse of the operation. Then, the child values are 
         `a` and `b`, such that `x = a op b`. Only `b` needs to be supplied to
         the action, since `a` can be calculated as `a = x inv b`.
 
-        The first `self.max_n_nodes` actions are leaf-selection actions.
+        The first `len(self.int_range)` actions are target-selection actions.
+        The next `self.max_n_nodes` actions are leaf-selection actions.
         After that, the next `len(self.int_range)` actions are the expansion 
         actions for `opid` 0, then again the same number of actions for the
         next opid and so on. The last action is the end-of-sequence action.
         """
         actions: List[Tuple[int, int, int]] = []
+        for integer in self.int_range:
+            actions.append((ActionType.SELECT_TARGET, integer, 0))
         for idx in range(self.max_n_nodes):
-            actions.append((1, idx, 0))
+            actions.append((ActionType.SELECT_LEAF, idx, 0))
         for opid in range(len(self.operations)):
             for b in self.int_range:
-                    actions.append((2, opid, b))
+                actions.append((ActionType.EXPAND, opid, b))
         actions.append(self.eos)
         return actions
 
@@ -250,18 +282,31 @@ class ArithmeticBuilder(GFlowNetEnv):
         # Start out with everything masked
         mask = [True for _ in range(self.policy_output_dim)]
 
-        # Unmask eos action if early stopping is allowed or all leaf are 
-        # in stock.
+        # Unmask eos action if early stopping is allowed or if the state is
+        # complete.
         if (self.allow_early_eos or state.is_complete()):
             mask[-1] = False
 
+        # Starting indices of each action type
+        target_selection_start = 0
+        leaf_selection_start = target_selection_start + len(self.int_range)
+        expansion_start = leaf_selection_start + self.max_n_nodes
+
+        # If target is not yet selected, unmask target selection actions
+        # and we are done
+        if len(state.graph.nodes) == 0:
+            slice_ = slice(target_selection_start, leaf_selection_start)
+            mask[slice_] = (False for _ in range(target_selection_start, 
+                                                 leaf_selection_start))
+            return mask
+
+        selected_leaf = state.get_selected_leaf()
         # If no leaf is selected we just unmask leaf indices that are not in 
         # stock and we are done
-        selected_leaf = state.get_selected_leaf()
         if selected_leaf == None:
             for leaf_idx in state.get_leaf_nodes():
                 if not state[leaf_idx]["in_stock"]:
-                    mask[leaf_idx] = False
+                    mask[leaf_selection_start + leaf_idx] = False
             return mask
         
         # If a leaf x is selected, we check which (op, b) pairs can be applied 
@@ -269,11 +314,15 @@ class ArithmeticBuilder(GFlowNetEnv):
         x = state[selected_leaf]["integer"] 
         for opid, op in enumerate(self.operations):
             relevant_slice = slice(
-                self.max_n_nodes + len(self.int_range) * opid,
-                self.max_n_nodes + len(self.int_range) * (opid + 1)
+                expansion_start + len(self.int_range) * opid,
+                expansion_start + len(self.int_range) * (opid + 1)
             )
             operation_mask = self.operation_mask(op, x)
             mask[relevant_slice] = operation_mask
+
+        # If all other actions are invalid, make eos valid
+        if all(mask):
+            mask[-1] = False
 
         return mask
 
@@ -313,22 +362,29 @@ class ArithmeticBuilder(GFlowNetEnv):
             self.n_actions += 1
             return self.state, self.eos, True
         # If action is normal action, perform action
-        action_type, idx_or_opid, b = action
-        # Action type 1: leaf selection
-        if action_type == 1:
+        action_type, action_value, b = action
+        # Action type 1: target selection
+        if action_type == ActionType.SELECT_TARGET:
+            assert len(self.state.graph.nodes) == 0, "Target already selected."
+            target_value = action_value
+            self.state.select_target(target_value)
+            self.n_actions += 1
+            return self.state, action, True
+        # Action type 2: leaf selection
+        if action_type == ActionType.SELECT_LEAF:
             assert (
                 self.state.get_selected_leaf() == None
                 ), "Leaf already slected."
-            idx = idx_or_opid
+            idx = action_value
             try:
                 self.state.select_leaf(idx)
                 self.n_actions += 1
                 return self.state, action, True
             except AssertionError:
                 return self.state, action, False
-        # Action type 2: expansion
-        if action_type == 2:
-            opid = idx_or_opid
+        # Action type 3: expansion
+        if action_type == ActionType.EXPAND:
+            opid = action_value
             op = self.operations[opid]
             x = self.state[self.state.get_selected_leaf()]["integer"]
             if x == None:
@@ -403,7 +459,15 @@ class ArithmeticBuilder(GFlowNetEnv):
         if selected_leaf != None:
             parent = state.copy()
             parent.unselect_leaf()
-            return [parent,], [(1, selected_leaf, 0)]
+            return [parent,], [(ActionType.SELECT_LEAF, selected_leaf, 0)]
+
+        # If there is precisely one node in the tree, the previous action was 
+        # selecting the target.
+        if len(state.graph.nodes) == 1:
+            target_value = state.graph.nodes[0]["integer"]
+            parent = state.copy()
+            parent.unselect_target()
+            return [parent,], [(ActionType.SELECT_TARGET, target_value, 0)]
 
         # If there was no selected leaf, the previous action was an expansion.
         parents: List[ArithmeticTree] = []
@@ -411,14 +475,19 @@ class ArithmeticBuilder(GFlowNetEnv):
         unexpandable = state.get_unexpandable()
         for idx in unexpandable:
             b = state[list(state.children(idx))[-1]]["integer"]
-            actions.append((2, state[idx]["operation"], b))
+            actions.append((ActionType.EXPAND, state[idx]["operation"], b))
             parent = state.copy()
             parent.unexpand(idx)
             parents.append(parent)
         return parents, actions
 
-    def ints2one_hot(self, integers: int) -> TensorType["one_hot_length"]:
+    def ints2one_hot(
+        self, 
+        integers: List[int]
+    ) -> TensorType["len(integers)", "one_hot_length"]:
         one_hot_length = len(self.int_range)
+        if len(integers) == 0:
+            return torch.empty((0, one_hot_length))
         integers_shifted = torch.tensor(integers) - self.min_int
         ints_one_hot = one_hot(integers_shifted, num_classes=one_hot_length)
         return ints_one_hot
@@ -432,11 +501,17 @@ class ArithmeticBuilder(GFlowNetEnv):
         ops = [value for _, value in state.graph.nodes(data="operation")]
         # We transform opids to one hot vectors
         # The +1 is so that -1 goes to 0
-        ops_one_hot = one_hot(torch.tensor(ops) + 1, len(self.operations) + 1)
+        if ops:
+            ops_one_hot = one_hot(torch.tensor(ops) + 1, len(self.operations) + 1)
+        else:
+            ops_one_hot = torch.empty((0, len(self.operations) + 1))
         in_stock = [value for _, value in state.graph.nodes(data="in_stock")]
         in_stock_tensor = torch.tensor(in_stock)
         leaf_nodes = torch.tensor(state.get_leaf_nodes())
-        is_leaf = one_hot(leaf_nodes, num_classes=self.max_n_nodes).sum(axis=0)
+        if leaf_nodes.shape[0] != 0:
+            is_leaf = one_hot(leaf_nodes, num_classes=self.max_n_nodes).sum(axis=0)
+        else:
+            is_leaf = torch.zeros(self.max_n_nodes)
         active_leaf = state.get_selected_leaf()
         if active_leaf == None:
             is_active = torch.zeros(self.max_n_nodes)
@@ -480,6 +555,9 @@ class ArithmeticBuilder(GFlowNetEnv):
         if state is None:
             state = self.state.copy()
         def depth_first_traversal(idx: int) -> str:
+            # node does not exist
+            if idx not in state.graph.nodes:
+                return "."
             children = state.children(idx)
             if children:
             # node has children
@@ -494,7 +572,12 @@ class ArithmeticBuilder(GFlowNetEnv):
                     return f"({value})"
                 else:
                     return f"{value}"
-        return depth_first_traversal(0)
+        expression = depth_first_traversal(0)
+        if state.graph.nodes[0]:
+            target = str(state.graph.nodes[0]["integer"])
+        else:
+            target = "."
+        return expression + "=" + target
 
     def reset(self, env_id: Union[int, str] = None):
         """
