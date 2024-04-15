@@ -6,7 +6,7 @@ _target_: gflownet.envs.arithmetictree.ArithmeticBuilder
 id: arithmetictree
 max_operations: 3
 min_int: 2
-max_int:  9
+max_int:  7
 opaerations: ['+', '*']
 stock: [2, 3]
 allow_early_eos: False
