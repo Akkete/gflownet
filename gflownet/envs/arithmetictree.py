@@ -502,7 +502,7 @@ class ArithmeticBuilder(GFlowNetEnv):
     def state2tensor(
         self, 
         state: ArithmeticTree
-    ) -> TensorType["max_n_nodes", "one_hot_length+len(self.operations)+3"]:
+    ) -> TensorType["max_n_nodes+1", "one_hot_length+len(self.operations)+4"]:
         ints = [value for _, value in state.graph.nodes(data="integer")]
         ints_one_hot = self.ints2one_hot(ints)
         ops = [value for _, value in state.graph.nodes(data="operation")]
@@ -522,8 +522,17 @@ class ArithmeticBuilder(GFlowNetEnv):
         active_leaf = state.get_selected_leaf()
         if active_leaf == None:
             is_active = torch.zeros(self.max_n_nodes)
+            active_leaf_tensor = torch.zeros(
+                len(self.int_range) + len(self.operations) + 4)
         else:
             is_active = one_hot(torch.tensor(active_leaf), self.max_n_nodes)
+            active_leaf_one_hot = self.ints2one_hot([state[active_leaf]["integer"]])
+            active_leaf_tensor = torch.cat(
+                (
+                    active_leaf_one_hot.squeeze(), 
+                    torch.zeros(len(self.operations) + 1),
+                    torch.tensor([0, 1, 1])
+                ))
         padding = (0, self.max_n_nodes - in_stock_tensor.shape[0])
         ints_padded = pad(ints_one_hot, (0, 0) + padding, value=0)
         ops_padded = pad(ops_one_hot, (0, 0) + padding, value=0)
@@ -532,14 +541,17 @@ class ArithmeticBuilder(GFlowNetEnv):
         is_active_unsqueezed = is_active.unsqueeze(1)
         result_tensor = torch.cat(
             (
-                ints_padded, 
+                ints_padded,
                 ops_padded, 
                 in_stock_padded, 
                 is_leaf_unsqueezed, 
-                is_active_unsqueezed
+                is_active_unsqueezed,
             ), axis=-1).to(device=self.device)
-        return result_tensor
-
+        result_tensor_with_active_appended = torch.cat(
+            (result_tensor, active_leaf_tensor.unsqueeze(0)), axis=0
+        )
+        return result_tensor_with_active_appended
+    
     def states2proxy(
         self, states: List[ArithmeticTree]
     ) -> List[ArithmeticTree]:
