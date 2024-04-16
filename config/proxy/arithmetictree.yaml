@@ -3,5 +3,5 @@ _target_: gflownet.proxy.arithmetictree.ArithmeticScorer
 completion_reward: 1.0
 leaf_in_stock_reward: 0.0
 leaf_not_in_stock_reward: 0.0
-operation_count_reward: -0.1
-base_reward: null
+operation_count_reward: 0.0
+base_reward: 0.0
