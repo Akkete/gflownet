@@ -31,9 +31,10 @@ class ArithmeticTree:
     - `expand(operation, operands)`, and
     - `unexpand(idx)`.
     """
-    def __init__(self, stock: List[int]):
+    def __init__(self, stock: List[int], targets: List[int]):
         self.graph = nx.DiGraph()
         self.stock = stock
+        self.targets = targets
         self._selected_leaf: Optional[int] = None
         self.n_operations = 0
     
@@ -83,8 +84,12 @@ class ArithmeticTree:
         return self._selected_leaf
 
     def select_target(self, target_value: int) -> Self:
-        """Sets the target. Should only be called when the tree is empty."""
-        assert len(self.graph.nodes) == 0
+        """
+        Sets the target. Should only be called when the tree is empty.
+        The arget should be from the target list.
+        """
+        assert len(self.graph.nodes) == 0, "Graph should be empty."
+        assert target_value in self.targets, "Invalid target."
         self.graph.add_node(0, integer=target_value, operation=-1, in_stock=0)
         return self
 
@@ -166,7 +171,7 @@ class ActionType:
 
 class ArithmeticBuilder(GFlowNetEnv):
     """
-    Environment that generates valid arithmetic calculations.
+    Environment that generates valid arithmetic expressions.
 
     The goal is to create an arithmetic calculation that produces a target
     integer starting from only integers in 'stock'. A state is a bipartite tree
@@ -181,6 +186,7 @@ class ArithmeticBuilder(GFlowNetEnv):
         max_int: int = +9,
         operations: List[str] = ['+', '*'],
         stock: List[int] = [1, -1, 2, -2],
+        targets: List[int] = [9, -9, 8, -8, 7, -7, 0],
         max_operations: int = 10, 
         allow_early_eos: bool = True,
         **kwargs,
@@ -200,15 +206,16 @@ class ArithmeticBuilder(GFlowNetEnv):
         self.int_range = range(self.min_int, self.max_int + 1)
         # What index should be used to represent a missing integer
         self.no_int = min_int - 1
-        # Operations, srock
+        # Operations, stock, targets
         self.operations = operations
-        self.stock = stock # stored in state class
+        self.stock = stock # also stored in state class
+        self.targets = targets # also stored in state class
         # Is early stopping allowed
         self.allow_early_eos = allow_early_eos
         # End-of-sequence action
         self.eos = (ActionType.STOP, 0, 0)
         # The initial state is an empty arithmetic tree object
-        self.source = ArithmeticTree(stock)
+        self.source = ArithmeticTree(stock, targets)
         # Max number of nodes is two times the number of opeartions plus one
         # This comes from the assumption that each operation takes in
         # two operands.
@@ -248,15 +255,15 @@ class ArithmeticBuilder(GFlowNetEnv):
         `a` and `b`, such that `x = a op b`. Only `b` needs to be supplied to
         the action, since `a` can be calculated as `a = x inv b`.
 
-        The first `len(self.int_range)` actions are target-selection actions.
+        The first `len(self.targets)` actions are target-selection actions.
         The next `self.max_n_nodes` actions are leaf-selection actions.
         After that, the next `len(self.int_range)` actions are the expansion 
         actions for `opid` 0, then again the same number of actions for the
         next opid and so on. The last action is the end-of-sequence action.
         """
         actions: List[Tuple[int, int, int]] = []
-        for integer in self.int_range:
-            actions.append((ActionType.SELECT_TARGET, integer, 0))
+        for target_value in self.targets:
+            actions.append((ActionType.SELECT_TARGET, target_value, 0))
         for idx in range(self.max_n_nodes):
             actions.append((ActionType.SELECT_LEAF, idx, 0))
         for opid in range(len(self.operations)):
@@ -289,7 +296,7 @@ class ArithmeticBuilder(GFlowNetEnv):
 
         # Starting indices of each action type
         target_selection_start = 0
-        leaf_selection_start = target_selection_start + len(self.int_range)
+        leaf_selection_start = target_selection_start + len(self.targets)
         expansion_start = leaf_selection_start + self.max_n_nodes
 
         # If target is not yet selected, unmask target selection actions
