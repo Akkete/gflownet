@@ -1,9 +1,9 @@
 defaults:
   - _self_
-  - env: arithmetictree
+  - env: reactiontree
   - gflownet: flowmatch
   - policy: mlp_${gflownet}
-  - proxy: arithmetictree
+  - proxy: reactiontree
   - logger: wandb
   - user: akkete
 
