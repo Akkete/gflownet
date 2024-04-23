@@ -4,7 +4,7 @@ defaults:
 _target_: gflownet.envs.reactiontree.ReactionTreeBuilder
 
 id: reactiontree
-template_file: external/reactiontree_data/uspto_unique_templates_filtered.csv
+# template_file: external/reactiontree_data/uspto_unique_templates_filtered.csv
 # stock_file: data/reactiontree/zinc_stock.hdf5
 target_file: external/reactiontree_data/targets_20.txt
 max_reactions: 6

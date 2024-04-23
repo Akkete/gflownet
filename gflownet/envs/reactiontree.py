@@ -28,12 +28,31 @@ import copy
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
-# Stock and template list 
+# Stock and template list are shared between instances of the class
 # Load stock
 stock_file = PROJECT_ROOT / "external/reactiontree_data/zinc_stock.hdf5"
 STOCK = Stock()
 STOCK.load(InMemoryInchiKeyQuery(str(stock_file)), "zinc")
 STOCK.select("zinc")
+# Load templates
+template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_unique_templates_filtered.csv"
+if ".csv" in template_file.suffixes:
+    templates_df: pd.DataFrame = pd.read_csv(
+        str(template_file), index_col=0, sep="\t"
+    )
+else:
+    templates_df = pd.read_hdf(str(template_file), "table")
+TEMPLATES: List[ChemicalReaction] = list(templates_df["retro_template"].apply(ReactionFromSmarts))
+
+# Cached function to compute masks for different molecules
+@lru_cache(maxsize=16_384)
+def calculate_reaction_mask(molecule_smiles: str) -> NDArray[np.bool]:
+    # print(f"Calculating mask for {molecule_smiles}")
+    mask: NDArray[np.bool] = np.full(len(TEMPLATES), True)
+    molecule = MolFromSmiles(molecule_smiles)
+    for i, reaction in enumerate(TEMPLATES):
+        mask[i] = len(reaction.RunReactants([molecule])) == 0
+    return mask
 
 class ReactionTree:
     """
@@ -61,12 +80,12 @@ class ReactionTree:
     def __init__(
         self, 
         # stock: Stock, 
-        templates: List[ChemicalReaction], 
+        # templates: List[ChemicalReaction], 
         targets: List[str]
     ):
         self.graph = nx.DiGraph()
         # self.stock = stock
-        self.templates: list[ChemicalReaction] = templates
+        # self.templates: list[ChemicalReaction] = templates
         self.targets = targets
         self._selected_leaf: Optional[str] = None
         self.n_reactions = 0
@@ -151,7 +170,7 @@ class ReactionTree:
         assert self._selected_leaf != None, "A leaf must be selected to expand."
         selected = self.get_selected_leaf()
         self.graph.nodes[selected]["reaction"] = rxn_idx
-        reaction: ChemicalReaction = self.templates[rxn_idx]
+        reaction: ChemicalReaction = TEMPLATES[rxn_idx]
         molecule: Molecule = MolFromSmiles(self[selected]["molecule"])
         reactants = reaction.RunReactants([molecule])
         assert len(reactants) > 0, "Reaction didn't produce reactants."
@@ -215,7 +234,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def __init__(
         self, 
-        template_file: str, # path
+        # template_file: str, # path
         # stock_file: str, # path
         target_file: str, # path
         max_reactions: int = 5, 
@@ -229,17 +248,17 @@ class ReactionTreeBuilder(GFlowNetEnv):
         self.max_reactions = max_reactions
         # If template_file is given as a relative path, 
         # it is interpreted to be relative to the project root.
-        template_path = Path(template_file)
-        if not template_path.is_absolute():
-            template_path = PROJECT_ROOT / template_path
-        # Load templates
-        if ".csv" in template_path.suffixes:
-            self.templates: pd.DataFrame = pd.read_csv(
-                str(template_path), index_col=0, sep="\t"
-            )
-        else:
-            self.templates = pd.read_hdf(str(template_path), "table")
-        self.reactions = list(self.templates["retro_template"].apply(ReactionFromSmarts))
+        # template_path = Path(template_file)
+        # if not template_path.is_absolute():
+        #     template_path = PROJECT_ROOT / template_path
+        # # Load templates
+        # if ".csv" in template_path.suffixes:
+        #     self.templates: pd.DataFrame = pd.read_csv(
+        #         str(template_path), index_col=0, sep="\t"
+        #     )
+        # else:
+        #     self.templates = pd.read_hdf(str(template_path), "table")
+        # self.reactions = list(self.templates["retro_template"].apply(ReactionFromSmarts))
         # Load target file
         target_path = Path(target_file)
         if not target_path.is_absolute():
@@ -251,7 +270,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # End-of-sequence action
         self.eos = (ActionType.STOP, 0,)
         # The initial state is an empty reactiion tree object
-        self.source = ReactionTree(self.reactions, self.targets)
+        self.source = ReactionTree(self.targets)
         # The maximum number of nodes in the reaction tree 
         # is five times number of reactions plus one, 
         # because each reaction has a maximum of five children
@@ -348,14 +367,6 @@ class ReactionTreeBuilder(GFlowNetEnv):
     #             return None
     #     return state
 
-    @lru_cache(maxsize=16_384)
-    def reaction_mask(self, molecule_smiles: str) -> NDArray[np.bool]:
-        mask: NDArray[np.bool] = np.full(len(self.reactions), True)
-        molecule = MolFromSmiles(molecule_smiles)
-        for i, reaction in enumerate(self.reactions):
-            mask[i] = len(reaction.RunReactants([molecule])) == 0
-        return mask
-
     def get_action_space(self):
         """
         Constructs a list with all possible actions, including eos.
@@ -375,7 +386,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             actions.append((ActionType.SELECT_TARGET, tgt_idx))
         for idx in range(self.max_n_nodes):
             actions.append((ActionType.SELECT_LEAF, idx))
-        for rxn_idx in range(len(self.reactions)):
+        for rxn_idx in range(len(TEMPLATES)):
             actions.append((ActionType.EXPAND, rxn_idx))
         actions.append(self.eos)
         return actions
@@ -406,7 +417,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         target_selection_start = 0
         leaf_selection_start = target_selection_start + len(self.targets)
         expansion_start = leaf_selection_start + self.max_n_nodes
-        expansion_end = expansion_start + len(self.reactions)
+        expansion_end = expansion_start + len(TEMPLATES)
 
         # If target is not yet selected, unmask target selection actions
         # and we are done
@@ -427,7 +438,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         
         # If a leaf x is selected, we check which reactions can be applied to it.
         molecule: str = state[selected_leaf]["molecule"]
-        reaction_mask = self.reaction_mask(molecule)
+        reaction_mask = calculate_reaction_mask(molecule)
         relevant_slice = slice(expansion_start, expansion_end)
         mask[relevant_slice] = reaction_mask
 
@@ -601,16 +612,16 @@ class ReactionTreeBuilder(GFlowNetEnv):
     def state2tensor(
         self, 
         state: ReactionTree
-    ) -> TensorType["max_n_nodes+1", "self.fingerprint_length+len(self.reactions)+4"]:
+    ) -> TensorType["max_n_nodes+1", "self.fingerprint_length+len(TEMPLATES)+4"]:
         mols = [value for _, value in state.graph.nodes(data="molecule")]
         mols_tensor = self.mols2tensor(mols)
         rxns = [value for _, value in state.graph.nodes(data="reaction")]
         # We transform reaction indexes to one hot vectors
         # The +1 is so that -1 goes to 0
         if rxns:
-            rxns_one_hot = one_hot(torch.tensor(rxns) + 1, len(self.reactions) + 1)
+            rxns_one_hot = one_hot(torch.tensor(rxns) + 1, len(TEMPLATES) + 1)
         else:
-            rxns_one_hot = torch.empty((0, len(self.reactions) + 1))
+            rxns_one_hot = torch.empty((0, len(TEMPLATES) + 1))
         in_stock = [value for _, value in state.graph.nodes(data="in_stock")]
         in_stock_tensor = torch.tensor(in_stock, dtype=torch.float32)
         leaf_nodes = torch.tensor(state.get_leaf_nodes())
@@ -622,7 +633,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         if active_leaf == None:
             is_active = torch.zeros(self.max_n_nodes)
             active_leaf_tensor = torch.zeros(
-                self.fingerprint_length + len(self.reactions) + 4
+                self.fingerprint_length + len(TEMPLATES) + 4
             )
         else:
             is_active = one_hot(torch.tensor(active_leaf), self.max_n_nodes)
@@ -630,7 +641,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             active_leaf_tensor = torch.cat(
                 (
                     active_leaf_one_hot.squeeze(), 
-                    torch.zeros(len(self.reactions) + 1),
+                    torch.zeros(len(TEMPLATES) + 1),
                     torch.tensor([0, 1, 1])
                 ))
         padding = (0, self.max_n_nodes - in_stock_tensor.shape[0])

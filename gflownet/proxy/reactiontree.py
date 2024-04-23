@@ -38,7 +38,7 @@ class ReactionTreeScorer(Proxy):
                     self.base_reward += -self.leaf_not_in_stock_reward * (self.max_n_nodes - 1.0)
                 if self.reaction_count_reward < 0.0:
                     self.base_reward += -self.reaction_count_reward * (env.max_reactions)
-            self.num_reaction_classes = len(env.templates)
+            # self.num_reaction_classes = len(env.templates)
 
     def score_state(self, state: ReactionTree) -> float:
         is_complete = state.is_complete()
