@@ -45,7 +45,7 @@ else:
 TEMPLATES: List[ChemicalReaction] = list(templates_df["retro_template"].apply(ReactionFromSmarts))
 
 # Cached function to compute masks for different molecules
-@lru_cache(maxsize=16_384)
+@lru_cache(maxsize=None)
 def calculate_reaction_mask(molecule_smiles: str) -> NDArray[np.bool]:
     # print(f"Calculating mask for {molecule_smiles}")
     mask: NDArray[np.bool] = np.full(len(TEMPLATES), True)
