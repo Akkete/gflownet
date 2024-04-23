@@ -336,8 +336,11 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # and we are done
         if len(state.graph.nodes) == 0:
             slice_ = slice(target_selection_start, leaf_selection_start)
-            mask[slice_] = (False for _ in range(target_selection_start, 
-                                                 leaf_selection_start))
+            mask[slice_] = (
+                False for _ in range(
+                    target_selection_start, leaf_selection_start
+                )
+            )
             return mask
 
         selected_leaf = state.get_selected_leaf()
@@ -551,10 +554,10 @@ class ReactionTreeBuilder(GFlowNetEnv):
             )
         else:
             is_active = one_hot(torch.tensor(active_leaf, device=self.device), self.max_n_nodes)
-            active_leaf_one_hot = self.mols2tensor([state[active_leaf]["molecule"]])
+            active_leaf_fingerprint = self.mols2tensor([state[active_leaf]["molecule"]])
             active_leaf_tensor = torch.cat(
                 (
-                    active_leaf_one_hot.squeeze(), 
+                    active_leaf_fingerprint.squeeze(), 
                     torch.zeros(len(TEMPLATES) + 1, device=self.device),
                     torch.tensor([0, 1, 1], device=self.device)
                 ))
