@@ -507,8 +507,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
             aizynthfinder_mol.fingerprint(
                 radius=2, 
                 nbits=self.fingerprint_length
-            ), 
-            device = self.device
+            )
         )
         return tensor
 
@@ -521,7 +520,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         """
         fingerprint_length = 2048
         if len(molecules) == 0:
-            return torch.empty((0, fingerprint_length), device=self.device)
+            return torch.empty((0, fingerprint_length))
         fingerprints = [self.mol2tensor(molecule) for molecule in molecules]
         return torch.stack(fingerprints)
 
@@ -535,32 +534,32 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # We transform reaction indexes to one hot vectors
         # The +1 is so that -1 goes to 0
         if rxns:
-            rxns_one_hot = one_hot(torch.tensor(rxns, device=self.device) + 1, len(TEMPLATES) + 1)
+            rxns_one_hot = one_hot(torch.tensor(rxns) + 1, len(TEMPLATES) + 1)
         else:
-            rxns_one_hot = torch.empty((0, len(TEMPLATES) + 1), device=self.device)
+            rxns_one_hot = torch.empty((0, len(TEMPLATES) + 1))
         in_stock = [value for _, value in state.graph.nodes(data="in_stock")]
-        in_stock_tensor = torch.tensor(in_stock, dtype=torch.float32, device=self.device)
-        leaf_nodes = torch.tensor(state.get_leaf_nodes(), device=self.device)
+        in_stock_tensor = torch.tensor(in_stock, dtype=torch.float32)
+        leaf_nodes = torch.tensor(state.get_leaf_nodes())
         if leaf_nodes.shape[0] != 0:
             is_leaf = one_hot(leaf_nodes, num_classes=self.max_n_nodes).sum(axis=0)
         else:
-            is_leaf = torch.zeros(self.max_n_nodes, device=self.device)
+            is_leaf = torch.zeros(self.max_n_nodes)
         active_leaf = state.get_selected_leaf()
         if active_leaf == None:
-            is_active = torch.zeros(self.max_n_nodes, device=self.device)
+            is_active = torch.zeros(self.max_n_nodes)
             active_leaf_tensor = torch.zeros(
-                self.fingerprint_length + len(TEMPLATES) + 4,
-                device=self.device
+                self.fingerprint_length + len(TEMPLATES) + 4
             )
         else:
-            is_active = one_hot(torch.tensor(active_leaf, device=self.device), self.max_n_nodes)
+            is_active = one_hot(torch.tensor(active_leaf), self.max_n_nodes)
             active_leaf_fingerprint = self.mols2tensor([state[active_leaf]["molecule"]])
             active_leaf_tensor = torch.cat(
                 (
                     active_leaf_fingerprint.squeeze(), 
-                    torch.zeros(len(TEMPLATES) + 1, device=self.device),
-                    torch.tensor([0, 1, 1], device=self.device)
-                ))
+                    torch.zeros(len(TEMPLATES) + 1),
+                    torch.tensor([0, 1, 1])
+                )
+            )
         padding = (0, self.max_n_nodes - in_stock_tensor.shape[0])
         mols_padded = pad(mols_tensor, (0, 0) + padding, value=0)
         rxns_padded = pad(rxns_one_hot, (0, 0) + padding, value=0)
@@ -574,11 +573,14 @@ class ReactionTreeBuilder(GFlowNetEnv):
                 in_stock_padded, 
                 is_leaf_unsqueezed, 
                 is_active_unsqueezed,
-            ), axis=-1).to(device=self.device)
+            ), axis=-1)
         result_tensor_with_active_appended = torch.cat(
             (result_tensor, active_leaf_tensor.unsqueeze(0)), axis=0
         )
-        return result_tensor_with_active_appended.to(dtype=torch.float32)
+        return result_tensor_with_active_appended.to(
+            dtype=torch.float32, 
+            device=self.device
+        )
 
     def states2proxy(
         self, states: List[ReactionTree]
