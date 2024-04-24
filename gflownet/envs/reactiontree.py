@@ -51,7 +51,15 @@ def calculate_reaction_mask(molecule_smiles: str) -> NDArray[np.bool]:
     mask: NDArray[np.bool] = np.full(len(TEMPLATES), True)
     molecule = MolFromSmiles(molecule_smiles)
     for i, reaction in enumerate(TEMPLATES):
-        mask[i] = len(reaction.RunReactants([molecule])) == 0
+        reactants = reaction.RunReactants([molecule], maxProducts=1)
+        if len(reactants) == 0:
+            continue
+        reactants =  reactants[0]
+        if all(
+            MolFromSmiles(MolToSmiles(reactant)) != None
+            for reactant in reactants
+        ):
+            mask[i] = False
     return mask
 
 class ReactionTree:
@@ -172,13 +180,14 @@ class ReactionTree:
         self.graph.nodes[selected]["reaction"] = rxn_idx
         reaction: ChemicalReaction = TEMPLATES[rxn_idx]
         molecule: Molecule = MolFromSmiles(self[selected]["molecule"])
-        reactants = reaction.RunReactants([molecule])
+        reactants = reaction.RunReactants([molecule], maxProducts=1)
         assert len(reactants) > 0, "Reaction didn't produce reactants."
         reactants = reactants[0]
         for reactant in reactants:
             new_idx = self.get_next_idx()
             reactant_smiles = MolToSmiles(reactant)
-            assert MolFromSmiles(reactant_smiles) != None, "Bad molecule"
+            if MolFromSmiles(reactant_smiles) == None:
+                assert MolFromSmiles(reactant_smiles) != None, "Bad molecule"
             reactant_aizynth = Molecule(rd_mol=reactant)
             reactant_in_stock = reactant_aizynth in STOCK
             self.graph.add_node(
@@ -274,7 +283,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # The maximum number of nodes in the reaction tree 
         # is five times number of reactions plus one, 
         # because each reaction has a maximum of five children
-        self.max_n_nodes = max_reactions *  5 + 1
+        self.max_n_nodes = max_reactions * 5 + 1
         # Fingerprint length
         self.fingerprint_length = 2048
         # Base class init
@@ -315,15 +324,14 @@ class ReactionTreeBuilder(GFlowNetEnv):
             done = self.done
         if done:
             return [True for _ in range(self.policy_output_dim)]
-        if state.n_reactions >= self.max_reactions:
+        if (state.n_reactions >= self.max_reactions) or (state.is_complete()):
             return [True for _ in range(self.policy_output_dim - 1)] + [False]
 
         # Start out with everything masked
         mask = [True for _ in range(self.policy_output_dim)]
 
-        # Unmask eos action if early stopping is allowed or if the state is
-        # complete.
-        if (self.allow_early_eos or state.is_complete()):
+        # Unmask eos action if early stopping is allowed.
+        if self.allow_early_eos:
             mask[-1] = False
 
         # Starting indices of each action type
