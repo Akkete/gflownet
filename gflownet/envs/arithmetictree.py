@@ -547,11 +547,11 @@ class ArithmeticBuilder(GFlowNetEnv):
                 in_stock_padded, 
                 is_leaf_unsqueezed, 
                 is_active_unsqueezed,
-            ), axis=-1).to(device=self.device)
+            ), axis=-1)
         result_tensor_with_active_appended = torch.cat(
             (result_tensor, active_leaf_tensor.unsqueeze(0)), axis=0
         )
-        return result_tensor_with_active_appended
+        return result_tensor_with_active_appended.to(device=self.device)
     
     def states2proxy(
         self, states: List[ArithmeticTree]
