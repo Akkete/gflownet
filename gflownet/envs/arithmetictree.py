@@ -21,7 +21,8 @@ class ArithmeticTree:
     """
     Reperesents the parse tree of an arithmetic expression.
 
-    The arithmetic tree is instantinated by supplying stock.
+    The arithmetic tree is instantinated by supplying the stock and a list of
+    possible target integers.
     It starts as an empty graph.
     It should then be modified with the methods
     - `select_target(target_value)`,
@@ -66,7 +67,7 @@ class ArithmeticTree:
         return [n for n, d in self.graph.out_degree() if d==0]
     
     def get_parent(self, idx: int) -> Optional[int]:
-        """Given an index, return parent index. For roote"""
+        """Given an index, return parent index. For root"""
         # TODO: Unused?
         # Assuming tree struucture, there should be at most one predecessor
         return next(self.graph.predecessors(idx), None)
@@ -152,7 +153,7 @@ class ArithmeticTree:
         return self
     
     def get_unexpandable(self) -> List[int]:
-        """Returns a list of nodes that could be uexpanded."""
+        """Returns a list of nodes that could be unexpanded."""
         result: List[int] = []
         for node in self.graph.nodes:
             children = self.children(node)
@@ -241,8 +242,9 @@ class ArithmeticBuilder(GFlowNetEnv):
         """
         Constructs a list with all possible actions, including eos.
 
-        There are two types of actions, one for choosing which leaf to expand
-        and another for choosing how to expand that leaf.
+        There are four types of actions. The main ones are one for choosing 
+        which leaf to expand and another for choosing how to expand that leaf.
+        The action types for selecting a target and stop are only used once.
 
         Actions are represented by tuples
         - The end-of-sequence (eos) action looks like this: (0, 0, 0)
@@ -343,7 +345,6 @@ class ArithmeticBuilder(GFlowNetEnv):
         ----
         action : tuple
             Action to be executed. 
-            An action is a tuple int values `(x, b, opid)`
 
         skip_mask_check : bool
             If True, skip computing forward mask of invalid actions to check if 
@@ -546,11 +547,11 @@ class ArithmeticBuilder(GFlowNetEnv):
                 in_stock_padded, 
                 is_leaf_unsqueezed, 
                 is_active_unsqueezed,
-            ), axis=-1).to(device=self.device)
+            ), axis=-1)
         result_tensor_with_active_appended = torch.cat(
             (result_tensor, active_leaf_tensor.unsqueeze(0)), axis=0
         )
-        return result_tensor_with_active_appended
+        return result_tensor_with_active_appended.to(device=self.device)
     
     def states2proxy(
         self, states: List[ArithmeticTree]

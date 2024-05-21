@@ -4,9 +4,9 @@ defaults:
 _target_: gflownet.envs.reactiontree.ReactionTreeBuilder
 
 id: reactiontree
-template_file: data/reactiontree/uspto_unique_templates_filtered.csv
+# template_file: external/reactiontree_data/uspto_unique_templates_filtered.csv
 # stock_file: data/reactiontree/zinc_stock.hdf5
-target_smiles: O=C(O)c1ccccc1Nc1cccc(C(F)(F)F)c1-c1ccccc1
+target_file: external/reactiontree_data/targets_20.txt
 max_reactions: 6
 buffer:
   data_path: null
