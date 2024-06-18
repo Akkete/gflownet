@@ -35,7 +35,7 @@ STOCK = Stock()
 STOCK.load(InMemoryInchiKeyQuery(str(stock_file)), "zinc")
 STOCK.select("zinc")
 # Load templates
-template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_templates_6k.csv.gz"
+template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_unique_templates_filtered_6k.csv"
 if ".csv" in template_file.suffixes:
     templates_df: pd.DataFrame = pd.read_csv(
         str(template_file), index_col=0, sep="\t"
