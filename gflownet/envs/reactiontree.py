@@ -35,7 +35,7 @@ STOCK = Stock()
 STOCK.load(InMemoryInchiKeyQuery(str(stock_file)), "zinc")
 STOCK.select("zinc")
 # Load templates
-template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_unique_templates_filtered.csv"
+template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_templates_6k.csv.gz"
 if ".csv" in template_file.suffixes:
     templates_df: pd.DataFrame = pd.read_csv(
         str(template_file), index_col=0, sep="\t"
@@ -43,6 +43,7 @@ if ".csv" in template_file.suffixes:
 else:
     templates_df = pd.read_hdf(str(template_file), "table")
 TEMPLATES: List[ChemicalReaction] = list(templates_df["retro_template"].apply(ReactionFromSmarts))
+print(f"Loaded {len(TEMPLATES)} templates from {template_file}")
 
 # Cached function to compute masks for different molecules
 @lru_cache(maxsize=None)
