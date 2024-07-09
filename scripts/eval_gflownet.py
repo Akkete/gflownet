@@ -160,6 +160,9 @@ def main(args):
             corr_prob_traj_rew,
             var_logrew_logp,
             nll,
+            mean_logprobs_std,
+            mean_probs_std,
+            logprobs_std_nll_ratio,
             figs,
             env_metrics,
         ) = gflownet.test()
