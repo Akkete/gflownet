@@ -13,9 +13,12 @@ import torch
 from torch.nn.functional import one_hot, pad
 
 import copy
+import random
+import uuid
 
 from gflownet.envs.base import GFlowNetEnv
 from gflownet.utils.common import set_device
+
 
 class ArithmeticTree:
     """
@@ -49,14 +52,52 @@ class ArithmeticTree:
         copy_of_self.graph = copy_of_self.graph.copy()
         return copy_of_self
     
+    
     def __repr__(self) -> str:
-        return str(list(self.graph.nodes))
+        default_ops = ['+', '*']
+        selected_leaf = self.get_selected_leaf()
+        def depth_first_traversal(idx: int) -> str:
+            # node does not exist
+            if idx not in self.graph.nodes:
+                return "."
+            children = self.children(idx)
+            if children:
+            # node has children
+                lc = depth_first_traversal(children[0])
+                rc = depth_first_traversal(children[-1])
+                op = default_ops[self[idx]["operation"]]
+                return f"({lc}{op}{rc})"
+            else:
+            # node has no children
+                value = self[idx]["integer"]
+                if selected_leaf == idx:
+                    value_str = f"_{value}_"
+                else:
+                    value_str = str(value)
+                if value < 0:
+                    return f"({value_str})"
+                else:
+                    return f"{value_str}"
+        expression = depth_first_traversal(0)
+        if self.graph.nodes[0]:
+            target = str(self.graph.nodes[0]["integer"])
+        else:
+            target = "."
+        return str(self.graph.nodes) + " " + expression + "=" + target + " selected: " + str(selected_leaf)
 
     def __len__(self) -> int:
         return len(self.graph)
     
     def __getitem__(self, idx) -> Dict[str, int]:
         return self.graph.nodes[idx]
+    
+    def __eq__(self, other) -> bool:
+        if isinstance(other, self.__class__):
+            equal_graphs = nx.utils.graphs_equal(self.graph, other.graph)
+            equal_selection = self._selected_leaf == other._selected_leaf
+            return equal_graphs and equal_selection
+        else:
+            return False
     
     def children(self, idx: int) -> List[int]:
         # TODO: Unnecessary?
@@ -216,7 +257,8 @@ class ArithmeticBuilder(GFlowNetEnv):
         # End-of-sequence action
         self.eos = (ActionType.STOP, 0, 0)
         # The initial state is an empty arithmetic tree object
-        self.source = ArithmeticTree(stock, targets)
+        self.source = ArithmeticTree(stock, targets).select_target(self.targets[random.randrange(len(self.targets))])
+        print("Target: ", self.source.graph.nodes[0]["integer"])
         # Max number of nodes is two times the number of opeartions plus one
         # This comes from the assumption that each operation takes in
         # two operands.
@@ -264,8 +306,8 @@ class ArithmeticBuilder(GFlowNetEnv):
         next opid and so on. The last action is the end-of-sequence action.
         """
         actions: List[Tuple[int, int, int]] = []
-        for target_value in self.targets:
-            actions.append((ActionType.SELECT_TARGET, target_value, 0))
+        # for target_value in self.targets:
+        #     actions.append((ActionType.SELECT_TARGET, target_value, 0))
         for idx in range(self.max_n_nodes):
             actions.append((ActionType.SELECT_LEAF, idx, 0))
         for opid in range(len(self.operations)):
@@ -297,17 +339,18 @@ class ArithmeticBuilder(GFlowNetEnv):
             mask[-1] = False
 
         # Starting indices of each action type
-        target_selection_start = 0
-        leaf_selection_start = target_selection_start + len(self.targets)
+        # target_selection_start = 0
+        # leaf_selection_start = target_selection_start + len(self.targets)
+        leaf_selection_start = 0
         expansion_start = leaf_selection_start + self.max_n_nodes
 
         # If target is not yet selected, unmask target selection actions
         # and we are done
-        if len(state.graph.nodes) == 0:
-            slice_ = slice(target_selection_start, leaf_selection_start)
-            mask[slice_] = (False for _ in range(target_selection_start, 
-                                                 leaf_selection_start))
-            return mask
+        # if len(state.graph.nodes) == 0:
+        #     slice_ = slice(target_selection_start, leaf_selection_start)
+        #     mask[slice_] = (False for _ in range(target_selection_start, 
+        #                                          leaf_selection_start))
+        #     return mask
 
         selected_leaf = state.get_selected_leaf()
         # If no leaf is selected we just unmask leaf indices that are not in 
@@ -422,6 +465,16 @@ class ArithmeticBuilder(GFlowNetEnv):
         # If the excution gets here something went wrong
         raise Exception("There is a bug if the control reaches here.")
         return self.state, action, False
+    
+    def step_backwards(self, action: Tuple[int], skip_mask_check: bool = False) -> Tuple[List[int] | Tuple[int] | bool]:
+        # Fix source if inconsistent with state
+        # Note: bad code, should refactor
+        if self.source[0]["integer"] == self.state[0]["integer"]:
+            return super().step_backwards(action, skip_mask_check)
+        else:
+            self.source[0]["integer"] = self.state[0]["integer"]
+            return super().step_backwards(action, skip_mask_check)
+
 
     def get_parents(
         self,
@@ -462,6 +515,11 @@ class ArithmeticBuilder(GFlowNetEnv):
         if done:
             return [state], [self.eos,]
 
+        # print("\n-----")
+        # print("State: ", state)
+        # print("Sauce: ", self.source)
+        # print("Equal: ", self.equal(state, self.source))
+
         # If leaf is selected, the previous action was selecting that leaf.
         selected_leaf = state.get_selected_leaf()
         if selected_leaf != None:
@@ -471,11 +529,11 @@ class ArithmeticBuilder(GFlowNetEnv):
 
         # If there is precisely one node in the tree, the previous action was 
         # selecting the target.
-        if len(state.graph.nodes) == 1:
-            target_value = state.graph.nodes[0]["integer"]
-            parent = state.copy()
-            parent.unselect_target()
-            return [parent,], [(ActionType.SELECT_TARGET, target_value, 0)]
+        # if len(state.graph.nodes) == 1:
+        #     target_value = state.graph.nodes[0]["integer"]
+        #     parent = state.copy()
+        #     parent.unselect_target()
+        #     return [parent,], [(ActionType.SELECT_TARGET, target_value, 0)]
 
         # If there was no selected leaf, the previous action was an expansion.
         parents: List[ArithmeticTree] = []
@@ -487,7 +545,9 @@ class ArithmeticBuilder(GFlowNetEnv):
             parent = state.copy()
             parent.unexpand(idx)
             parents.append(parent)
+        # print("Paren: ", parents, actions)
         return parents, actions
+    
 
     def ints2one_hot(
         self, 
@@ -614,6 +674,14 @@ class ArithmeticBuilder(GFlowNetEnv):
         -------
         self
         """
-        # Most of the resetting is handled by the base class reset method
-        super().reset(env_id)
+        # super().reset(env_id)
+        # return self
+        self.source = ArithmeticTree(self.stock, self.targets).select_target(self.targets[random.randrange(len(self.targets))])
+        self.state = self.source.copy()
+        self.n_actions = 0
+        self.done = False
+        if env_id is None:
+            self.id = str(uuid.uuid4())
+        else:
+            self.id = env_id
         return self
