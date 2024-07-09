@@ -25,6 +25,8 @@ from rdkit.Chem import MolToSmiles
 
 from pathlib import Path
 import copy
+import random
+import uuid
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
@@ -117,6 +119,17 @@ class ReactionTree:
     def __getitem__(self, idx: int) -> Dict[str, int]:
         return self.graph.nodes[idx]
     
+    def __eq__(self, other) -> bool:
+        if isinstance(other, self.__class__):
+            equal_graphs = nx.utils.graphs_equal(self.graph, other.graph)
+            equal_selection = self._selected_leaf == other._selected_leaf
+            return equal_graphs and equal_selection
+        else:
+            return False
+        
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def children(self, idx: int) -> List[int]:
         return list(self.graph.successors(idx))
     
@@ -279,7 +292,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # End-of-sequence action
         self.eos = (ActionType.STOP, 0,)
         # The initial state is an empty reactiion tree object
-        self.source = ReactionTree(self.targets)
+        self.source = ReactionTree(self.targets).select_target(random.randrange(len(self.targets)))
         # The maximum number of nodes in the reaction tree 
         # is five times number of reactions plus one, 
         # because each reaction has a maximum of five children
@@ -304,8 +317,8 @@ class ReactionTreeBuilder(GFlowNetEnv):
         - Expansion actions look like this: `(3, rxn_idx)`
         """
         actions: List[Tuple[int, int, int]] = []
-        for tgt_idx in range(len(self.targets)):
-            actions.append((ActionType.SELECT_TARGET, tgt_idx))
+        # for tgt_idx in range(len(self.targets)):
+        #     actions.append((ActionType.SELECT_TARGET, tgt_idx))
         for idx in range(self.max_n_nodes):
             actions.append((ActionType.SELECT_LEAF, idx))
         for rxn_idx in range(len(TEMPLATES)):
@@ -335,21 +348,22 @@ class ReactionTreeBuilder(GFlowNetEnv):
             mask[-1] = False
 
         # Starting indices of each action type
-        target_selection_start = 0
-        leaf_selection_start = target_selection_start + len(self.targets)
+        # target_selection_start = 0
+        # leaf_selection_start = target_selection_start + len(self.targets)
+        leaf_selection_start = 0
         expansion_start = leaf_selection_start + self.max_n_nodes
         expansion_end = expansion_start + len(TEMPLATES)
 
         # If target is not yet selected, unmask target selection actions
         # and we are done
-        if len(state.graph.nodes) == 0:
-            slice_ = slice(target_selection_start, leaf_selection_start)
-            mask[slice_] = (
-                False for _ in range(
-                    target_selection_start, leaf_selection_start
-                )
-            )
-            return mask
+        # if len(state.graph.nodes) == 0:
+        #     slice_ = slice(target_selection_start, leaf_selection_start)
+        #     mask[slice_] = (
+        #         False for _ in range(
+        #             target_selection_start, leaf_selection_start
+        #         )
+        #     )
+        #     return mask
 
         selected_leaf = state.get_selected_leaf()
         # If no leaf is selected we just unmask leaf indices that are not in 
@@ -442,6 +456,15 @@ class ReactionTreeBuilder(GFlowNetEnv):
         # If the excution gets here something went wrong
         raise Exception("There is a bug if the control reaches here.")
         return self.state, action, False
+
+    def step_backwards(self, action: Tuple[int], skip_mask_check: bool = False) -> Tuple[List[int] | Tuple[int] | bool]:
+        # Fix source if inconsistent with state
+        # Note: bad code, should refactor
+        if self.source[0]["molecule"] == self.state[0]["molecule"]:
+            return super().step_backwards(action, skip_mask_check)
+        else:
+            self.source[0]["molecule"] = self.state[0]["molecule"]
+            return super().step_backwards(action, skip_mask_check)
 
     def get_parents(
         self,
@@ -649,6 +672,14 @@ class ReactionTreeBuilder(GFlowNetEnv):
         -------
         self
         """
-        # Most of the resetting is handled by the base class reset method
-        super().reset(env_id)
+        # super().reset(env_id)
+        # return self
+        self.source = ReactionTree(self.targets).select_target(random.randrange(len(self.targets)))
+        self.state = self.source.copy()
+        self.n_actions = 0
+        self.done = False
+        if env_id is None:
+            self.id = str(uuid.uuid4())
+        else:
+            self.id = env_id
         return self
