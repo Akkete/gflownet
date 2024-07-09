@@ -1,0 +1,47 @@
+
+# @package _global_
+
+defaults:
+  - override /env: reactiontree
+  - override /gflownet: trajectorybalance
+  - override /proxy: reactiontree
+  - override /logger: wandb
+
+# Environment
+env:
+  max_operations: 6
+  target_file: external/reactiontree_data/targets_20.txt
+  allow_early_eos: False
+
+# GFlowNet hyperparameters
+gflownet:
+  random_action_prob: 0.3
+  optimizer:
+    lr: 0.00001
+    z_dim: 16
+    lr_z_mult: 1000
+    n_train_steps: 2000
+    lr_decay_period: 1000000
+policy:
+  forward:
+    type: mlp
+    n_hid: 512
+    n_layers: 5
+    checkpoint: forward
+  backward:
+    type: mlp
+    n_hid: 512
+    n_layers: 5
+    shared_weights: False
+    checkpoint: backward
+
+# WandB
+logger:
+  lightweight: True
+  project_name: "gflownet"
+  tags:
+    - gflownet
+    - arithmetictree
+  checkpoints:
+    period: 500
+
