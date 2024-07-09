@@ -98,6 +98,9 @@ class ArithmeticTree:
             return equal_graphs and equal_selection
         else:
             return False
+        
+    def __ne__(self, other):
+        return not self.__eq__(other)
     
     def children(self, idx: int) -> List[int]:
         # TODO: Unnecessary?
