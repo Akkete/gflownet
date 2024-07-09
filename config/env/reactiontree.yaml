@@ -13,5 +13,6 @@ buffer:
   train: null
   test: 
     type: random
+    n: 100
     output_csv: reactiontree_test.csv
     output_pkl: reactiontree_test.pkl
