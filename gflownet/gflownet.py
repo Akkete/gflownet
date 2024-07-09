@@ -940,7 +940,7 @@ class GFlowNetAgent:
             traj_indices_batch = tlong(
                 batch.get_unique_trajectory_indices(), device=self.device
             )
-            data_indices = traj_indices_batch // mult_indices
+            data_indices = torch.div(traj_indices_batch, mult_indices, rounding_mode="floor") # traj_indices_batch // mult_indices # deprecated alternative
             traj_indices = traj_indices_batch % mult_indices
             # Compute log probabilities of the trajectories
             logprobs_f[data_indices, traj_indices] = self.compute_logprobs_trajectories(
