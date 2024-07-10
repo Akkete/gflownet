@@ -32,12 +32,12 @@ PROJECT_ROOT = Path(__file__).parents[2]
 
 # Stock and template list are shared between instances of the class
 # Load stock
-stock_file = PROJECT_ROOT / "external/reactiontree_data/zinc_stock.hdf5"
+stock_file = PROJECT_ROOT / "external/reactiontree_data/emols-stock-2023-01-01.csv"
 STOCK = Stock()
-STOCK.load(InMemoryInchiKeyQuery(str(stock_file)), "zinc")
-STOCK.select("zinc")
+STOCK.load(InMemoryInchiKeyQuery(str(stock_file)), "emols")
+STOCK.select("emols")
 # Load templates
-template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_unique_templates_filtered_6k.csv"
+template_file = PROJECT_ROOT / "external/reactiontree_data/uspto_unique_templates_filtered_easy_3k.csv"
 if ".csv" in template_file.suffixes:
     templates_df: pd.DataFrame = pd.read_csv(
         str(template_file), index_col=0, sep="\t"
@@ -257,8 +257,6 @@ class ReactionTreeBuilder(GFlowNetEnv):
 
     def __init__(
         self, 
-        # template_file: str, # path
-        # stock_file: str, # path
         target_file: str, # path
         max_reactions: int = 5, 
         allow_early_eos: bool = False,
@@ -648,9 +646,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
         reactions_str = ", ".join(map(str, reactions))
         return "\n".join([ 
             f"Reaction tree summary", 
-            F"---------------------",
+            f"---------------------",
             f"Target: {state[0]['molecule']}", 
-            f"Number of reactions: {len(reactions)}", 
+            f"Number of reactions: {state.n_reactions}", 
             f"Reaction indices: {reactions_str}", 
             f"Molecules in stock ({len(leaf_mols_in_stock)}): "
             f"{leaf_mols_in_stock_str}", 
