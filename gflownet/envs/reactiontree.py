@@ -626,7 +626,7 @@ class ReactionTreeBuilder(GFlowNetEnv):
         self, states: List[ReactionTree]
     ) -> TensorType["batch_size", "policy_input_dim"]:
         return torch.stack(list(map(self.state2tensor, states)), axis = 0).flatten(1, -1)
-
+    
     def state2readable(self, state: Optional[ReactionTree] = None):
         """
         Converts a state into a readable summary.
@@ -644,17 +644,24 @@ class ReactionTreeBuilder(GFlowNetEnv):
         leaf_mols_in_stock_str = ", ".join(leaf_mols_in_stock)
         leaf_mols_not_in_stock_str = ", ".join(leaf_mols_not_in_stock)
         reactions_str = ", ".join(map(str, reactions))
-        return "\n".join([ 
-            f"Reaction tree summary", 
-            f"---------------------",
-            f"Target: {state[0]['molecule']}", 
-            f"Number of reactions: {state.n_reactions}", 
-            f"Reaction indices: {reactions_str}", 
-            f"Molecules in stock ({len(leaf_mols_in_stock)}): "
-            f"{leaf_mols_in_stock_str}", 
-            f"Missing from stock ({len(leaf_mols_not_in_stock)}): "
+        return ";".join([ 
+            f"{state[0]['molecule']}", 
+            f"{state.n_reactions}", 
+            f"{reactions_str}", 
+            f"{leaf_mols_in_stock_str}",
             f"{leaf_mols_not_in_stock_str}",
         ])
+        # return "\n".join([ 
+        #     f"Reaction tree summary", 
+        #     f"---------------------",
+        #     f"Target: {state[0]['molecule']}", 
+        #     f"Number of reactions: {state.n_reactions}", 
+        #     f"Reaction indices: {reactions_str}", 
+        #     f"Molecules in stock ({len(leaf_mols_in_stock)}): "
+        #     f"{leaf_mols_in_stock_str}", 
+        #     f"Missing from stock ({len(leaf_mols_not_in_stock)}): "
+        #     f"{leaf_mols_not_in_stock_str}",
+        # ])
 
     def reset(self, env_id: Union[int, str] = None):
         """
