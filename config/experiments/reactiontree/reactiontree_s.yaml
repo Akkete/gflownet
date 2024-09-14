@@ -9,7 +9,7 @@ defaults:
 
 # Environment
 env:
-  max_reactions: 3
+  max_operations: 6
   target_file: external/reactiontree_data/targets_easy_train.txt
   allow_early_eos: False
 
@@ -20,18 +20,18 @@ gflownet:
     lr: 0.00001
     z_dim: 16
     lr_z_mult: 1000
-    n_train_steps: 1000
+    n_train_steps: 20000
     lr_decay_period: 1000000
 policy:
   forward:
     type: mlp
-    n_hid: 128
-    n_layers: 5
+    n_hid: 512
+    n_layers: 10
     checkpoint: forward
   backward:
     type: mlp
-    n_hid: 128
-    n_layers: 5
+    n_hid: 512
+    n_layers: 10
     shared_weights: False
     checkpoint: backward
 
