@@ -647,9 +647,9 @@ class ReactionTreeBuilder(GFlowNetEnv):
         return ";".join([ 
             f"{state[0]['molecule']}", 
             f"{state.n_reactions}", 
-            f"{reactions_str}", 
-            f"{leaf_mols_in_stock_str}",
-            f"{leaf_mols_not_in_stock_str}",
+            f"[{reactions_str}]", 
+            f"[{leaf_mols_in_stock_str}]",
+            f"[{leaf_mols_not_in_stock_str}]",
         ])
         # return "\n".join([ 
         #     f"Reaction tree summary", 
